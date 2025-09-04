@@ -234,8 +234,35 @@ function initSpeechRecognition() {
             recordBtn.innerHTML = '🎤 录音中...';
             if (stopBtn) stopBtn.disabled = false;
             if (resultDiv) resultDiv.innerHTML = '<p style="color: var(--success-color);">正在录音，请开始朗读...</p>';
+
+            // 激活荧光特效
+            const readingContainer = document.querySelector('.main-content');
+            if (readingContainer) {
+                readingContainer.classList.add('recording-active');
+            }
+
             const highlightText = document.getElementById('highlight-text');
-            if (highlightText) highlightText.innerHTML = '{{ original }}';
+            if (highlightText) {
+                // 从隐藏元素获取原文数据
+                const originalTextElement = document.getElementById('original-text');
+                const rubyTextElement = document.getElementById('ruby-text-data');
+                const originalText = originalTextElement ? originalTextElement.textContent : '';
+                const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
+
+                // 初始状态：所有词都是待读状态
+                const words = originalText.split(/\s+/);
+                let initialHTML = rubyText;
+
+                // 将所有词标记为待读状态
+                words.forEach(word => {
+                    if (word.trim()) {
+                        const regex = new RegExp(`(${word})`, 'g');
+                        initialHTML = initialHTML.replace(regex, `<span class="karaoke-pending">$1</span>`);
+                    }
+                });
+
+                highlightText.innerHTML = initialHTML;
+            }
         });
     }
 
@@ -246,6 +273,12 @@ function initSpeechRecognition() {
             recordBtn.innerHTML = '▶️ 开始录音';
             stopBtn.disabled = true;
             if (resultDiv) resultDiv.innerHTML = '<p style="color: var(--warning-color);">录音已停止，正在处理...</p>';
+
+            // 移除荧光特效
+            const readingContainer = document.querySelector('.main-content');
+            if (readingContainer) {
+                readingContainer.classList.remove('recording-active');
+            }
         });
     }
 
@@ -300,33 +333,196 @@ function resetButtons() {
     if (stopBtn) {
         stopBtn.disabled = true;
     }
+
+    // 移除荧光特效
+    const readingContainer = document.querySelector('.main-content');
+    if (readingContainer) {
+        readingContainer.classList.remove('recording-active');
+    }
 }
 
 function highlightText(recognized) {
     const highlightText = document.getElementById('highlight-text');
     if (!highlightText) return;
 
-    const text = '{{ original }}';
-    const start = text.indexOf(recognized);
-    if (start !== -1) {
-        const before = text.substring(0, start);
-        const match = text.substring(start, start + recognized.length);
-        const after = text.substring(start + recognized.length);
-        highlightText.innerHTML = `${before}<span class="highlight">${match}</span>${after}`;
-    } else {
-        highlightText.innerHTML = text;
+    // 从隐藏元素获取原文数据
+    const originalTextElement = document.getElementById('original-text');
+    const rubyTextElement = document.getElementById('ruby-text-data');
+    const originalText = originalTextElement ? originalTextElement.textContent : '';
+    const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
+
+    // 如果没有识别到内容，显示原始的带注音文本
+    if (!recognized || recognized.trim() === '') {
+        highlightText.innerHTML = rubyText;
+        return;
     }
+
+    // 卡拉OK式高亮：根据识别进度逐渐点亮文本
+    const recognizedWords = recognized.trim().split(/\s+/);
+    const originalWords = originalText.split(/\s+/);
+
+    let highlightedHTML = '';
+    let recognizedIndex = 0;
+    let originalIndex = 0;
+
+    // 解析ruby文本，提取纯文本词语
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = rubyText;
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+
+    // 重新构建带高亮的HTML
+    let rubyHTML = rubyText;
+    let currentPos = 0;
+
+    while (originalIndex < originalWords.length && recognizedIndex < recognizedWords.length) {
+        const originalWord = originalWords[originalIndex];
+        const recognizedWord = recognizedWords[recognizedIndex];
+
+        // 检查是否匹配
+        if (checkWordMatch(originalWord, recognizedWord)) {
+            // 找到匹配的词，在rubyHTML中替换为高亮版本
+            const wordIndex = rubyHTML.indexOf(originalWord, currentPos);
+            if (wordIndex !== -1) {
+                const beforeWord = rubyHTML.substring(0, wordIndex);
+                const afterWord = rubyHTML.substring(wordIndex + originalWord.length);
+                rubyHTML = beforeWord + `<span class="karaoke-highlight">${originalWord}</span>` + afterWord;
+                currentPos = wordIndex + originalWord.length + `<span class="karaoke-highlight">${originalWord}</span>`.length;
+            }
+
+            recognizedIndex++;
+        } else {
+            // 尝试向前查找匹配
+            let found = false;
+            for (let i = 0; i < 3 && originalIndex + i < originalWords.length; i++) {
+                if (checkWordMatch(originalWords[originalIndex + i], recognizedWord)) {
+                    // 标记跳过的词为待读状态
+                    for (let j = 0; j < i; j++) {
+                        const skipWord = originalWords[originalIndex + j];
+                        const skipIndex = rubyHTML.indexOf(skipWord, currentPos);
+                        if (skipIndex !== -1) {
+                            const beforeSkip = rubyHTML.substring(0, skipIndex);
+                            const afterSkip = rubyHTML.substring(skipIndex + skipWord.length);
+                            rubyHTML = beforeSkip + `<span class="karaoke-pending">${skipWord}</span>` + afterSkip;
+                        }
+                    }
+
+                    // 高亮匹配的词
+                    const matchWord = originalWords[originalIndex + i];
+                    const matchIndex = rubyHTML.indexOf(matchWord, currentPos);
+                    if (matchIndex !== -1) {
+                        const beforeMatch = rubyHTML.substring(0, matchIndex);
+                        const afterMatch = rubyHTML.substring(matchIndex + matchWord.length);
+                        rubyHTML = beforeMatch + `<span class="karaoke-highlight">${matchWord}</span>` + afterMatch;
+                        currentPos = matchIndex + matchWord.length + `<span class="karaoke-highlight">${matchWord}</span>`.length;
+                    }
+
+                    originalIndex += i;
+                    recognizedIndex++;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                // 没有找到匹配，标记为待读
+                const pendingWord = originalWord;
+                const pendingIndex = rubyHTML.indexOf(pendingWord, currentPos);
+                if (pendingIndex !== -1) {
+                    const beforePending = rubyHTML.substring(0, pendingIndex);
+                    const afterPending = rubyHTML.substring(pendingIndex + pendingWord.length);
+                    rubyHTML = beforePending + `<span class="karaoke-pending">${pendingWord}</span>` + afterPending;
+                }
+            }
+        }
+
+        originalIndex++;
+    }
+
+    // 处理剩余的词
+    while (originalIndex < originalWords.length) {
+        const remainingWord = originalWords[originalIndex];
+        const remainingIndex = rubyHTML.indexOf(remainingWord, currentPos);
+        if (remainingIndex !== -1) {
+            const beforeRemaining = rubyHTML.substring(0, remainingIndex);
+            const afterRemaining = rubyHTML.substring(remainingIndex + remainingWord.length);
+            rubyHTML = beforeRemaining + `<span class="karaoke-pending">${remainingWord}</span>` + afterRemaining;
+        }
+        originalIndex++;
+    }
+
+    highlightText.innerHTML = rubyHTML;
+}
+
+function checkWordMatch(originalWord, recognizedWord) {
+    // 移除标点符号进行比较
+    const cleanOriginal = originalWord.replace(/[。、，！？「」『』()（）【】《》〈〉]/g, '');
+    const cleanRecognized = recognizedWord.replace(/[。、，！？「」『』()（）【】《》〈〉]/g, '');
+
+    // 完全匹配
+    if (cleanOriginal === cleanRecognized) {
+        return true;
+    }
+
+    // 长度相似且包含相同字符
+    if (Math.abs(cleanOriginal.length - cleanRecognized.length) <= 1) {
+        const similarity = calculateSimilarity(cleanOriginal, cleanRecognized);
+        return similarity > 0.8;
+    }
+
+    return false;
+}
+
+function calculateSimilarity(str1, str2) {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+
+    if (longer.length === 0) return 1.0;
+
+    const distance = levenshteinDistance(longer, shorter);
+    return (longer.length - distance) / longer.length;
+}
+
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+
+    return matrix[str2.length][str1.length];
 }
 
 function evaluateSpeech(recognizedText) {
     const resultDiv = document.getElementById('result');
     const config = getStoredConfig();
 
+    // 从隐藏元素获取原文数据
+    const originalTextElement = document.getElementById('original-text');
+    const originalText = originalTextElement ? originalTextElement.textContent : '';
+
     fetch('/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            original: '{{ original }}',
+            original: originalText,
             recognized: recognizedText
         })
     })

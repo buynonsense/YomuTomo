@@ -294,6 +294,42 @@ body {
   .vocab-pronunciation {
     font-size: 0.85rem;
   }
+
+  /* 移动端文本区域调整 */
+  .highlight-text {
+    font-size: 1.5rem;
+    line-height: 2.2;
+    padding: 15px;
+  }
+
+  .translation-text {
+    font-size: 1rem;
+    padding: 15px;
+    line-height: 1.5;
+  }
+
+  /* 移动端荧光特效调整 */
+  .karaoke-highlight,
+  .karaoke-pending {
+    padding: 1px 3px;
+    margin: 0 1px;
+    font-size: 1rem;
+  }
+
+  .karaoke-highlight {
+    animation: karaoke-glow-mobile 1.5s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes karaoke-glow-mobile {
+  0% {
+    text-shadow: 0 0 3px rgba(76, 175, 80, 0.4);
+    transform: scale(1.03);
+  }
+  100% {
+    text-shadow: 0 0 8px rgba(76, 175, 80, 0.7);
+    transform: scale(1.05);
+  }
 }
 
 /* Button Styles */
@@ -407,15 +443,27 @@ rt {
   font-weight: 500;
 }
 
+.translation-text {
+  background: linear-gradient(135deg, #fce4ec, #f8bbd9);
+  padding: 20px;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  text-align: center;
+  border: 2px solid #f8bbd9;
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-family: "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "SimHei", "STHeiti", "微软雅黑", "黑体", "Arial Unicode MS", "Arial", sans-serif;
+}
+
 .highlight-text {
   background: linear-gradient(135deg, #fce4ec, #f8bbd9);
   padding: 20px;
   border-radius: 10px;
-  font-size: 1.3rem;
+  font-size: 1.8rem;
   text-align: center;
   border: 2px solid #e91e63;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 2.5;
   font-family: "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", "SimHei", "STHeiti", "微软雅黑", "黑体", "Arial Unicode MS", "Arial", sans-serif;
 }
 
@@ -425,6 +473,58 @@ rt {
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: bold;
+}
+
+/* 卡拉OK式高亮特效 */
+.karaoke-highlight {
+  color: #4caf50 !important;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+  animation: karaoke-glow 1.5s ease-in-out infinite alternate;
+  background: linear-gradient(45deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.2));
+  border-radius: 4px;
+  padding: 2px 4px;
+  display: inline-block;
+  transform: scale(1.05);
+}
+
+.karaoke-pending {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+.karaoke-pending:hover {
+  opacity: 1;
+  transform: scale(1.02);
+}
+
+/* 卡拉OK发光动画 */
+@keyframes karaoke-glow {
+  0% {
+    text-shadow: 0 0 5px rgba(76, 175, 80, 0.4), 0 0 10px rgba(76, 175, 80, 0.3);
+    transform: scale(1.05);
+  }
+  100% {
+    text-shadow: 0 0 15px rgba(76, 175, 80, 0.8), 0 0 25px rgba(76, 175, 80, 0.6);
+    transform: scale(1.08);
+  }
+}
+
+/* 录音状态指示器 */
+.recording-active .highlight-text {
+  border-color: #4caf50;
+  box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(76, 175, 80, 0.6);
+  }
 }
 
 /* Vocabulary */

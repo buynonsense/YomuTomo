@@ -29,14 +29,19 @@
 
         <section class="card text-card">
           <h2>📖 课文内容</h2>
+          <!-- 隐藏的数据存储，用于JavaScript访问 -->
+          <div id="text-data" style="display: none;">
+            <div id="original-text">{{ original }}</div>
+            <div id="ruby-text-data">{{ ruby_text | safe }}</div>
+          </div>
           <div class="text-content">
             <div class="text-section">
               <h3>日语原文</h3>
-              <p class="ruby-text">{{ ruby_text | safe }}</p>
+              <div id="highlight-text" class="highlight-text ruby-text">{{ ruby_text | safe }}</div>
             </div>
             <div class="text-section">
               <h3>中文翻译</h3>
-              <div id="highlight-text" class="highlight-text">{{ translation }}</div>
+              <div class="translation-text">{{ translation }}</div>
             </div>
           </div>
         </section>
