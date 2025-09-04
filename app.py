@@ -93,6 +93,50 @@ def translate_to_chinese(text, model="gpt-5-mini"):
         print(f"AI翻译失败: {e}")
         return "翻译失败，请检查AI配置"
 
+def generate_title(text, model="gpt-5-mini"):
+    """根据课文内容生成简洁中文标题（不超过15个汉字，强制中文）。"""
+    prompt = f"""下面是一段日语课文内容，请你基于主要主题生成一个『简体中文』标题：
+要求：
+1. 仅输出简体中文标题本身，不要任何前缀/引号/标点（例如“标题：”或冒号都不要）。
+2. 长度 6~15 个汉字，尽量精炼概括主题。
+3. 不要包含日文假名、罗马字、英文字母、数字或特殊符号。
+4. 不要使用书名号、引号、感叹号、句号等标点。
+5. 避免太空泛的词（如“故事”“文章”），应具体到语义核心。
+
+日语原文（截断前800字符）：\n{text[:800]}\n\n请直接输出标题："""
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        title = response.choices[0].message.content.strip()
+        # 清理可能的引号
+        title = title.strip('"“”『』「」')
+        # 如果包含日文假名或拉丁字符，尝试再次转换为中文
+        import re
+        if re.search(r'[\u3040-\u30FF]', title) or re.search(r'[A-Za-z]', title):
+            try:
+                fix_prompt = f"请将下面这段标题改写成符合要求的纯简体中文（6~15个汉字，无标点，无外文）：{title}\n只输出改写后的标题。"
+                fix_resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": fix_prompt}]
+                )
+                fixed = fix_resp.choices[0].message.content.strip().strip('"“”『』「」')
+                if fixed:
+                    title = fixed
+            except Exception as _:
+                pass
+        # 再做长度截断（安全）
+        if len(title) > 15:
+            title = title[:15]
+        # 兜底：若仍为空或不含任何中文，使用默认
+        if not re.search(r'[\u4e00-\u9fff]', title):
+            title = "朗读练习"
+        return title or "朗读练习"
+    except Exception as e:
+        print(f"AI生成标题失败: {e}")
+        return "朗读练习"
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -130,9 +174,11 @@ async def process_text(
     vocab = extract_vocabulary(text, final_model)
     # 生成中文翻译
     translation = translate_to_chinese(text, final_model)
+    # 生成标题
+    title = generate_title(text, final_model)
     return templates.TemplateResponse(
         "reading.html",
-        {"request": request, "original": text, "ruby_text": ruby_text, "vocab": vocab, "translation": translation}
+        {"request": request, "original": text, "ruby_text": ruby_text, "vocab": vocab, "translation": translation, "title": title}
     )
 
 @app.post("/evaluate")

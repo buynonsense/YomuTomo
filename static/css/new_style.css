@@ -493,13 +493,42 @@ body {
 
 .btn-remove {
   background: var(--danger-color);
-  color: white;
+  color: #fff;
   border: none;
   padding: 8px 12px;
   border-radius: 20px;
   cursor: pointer;
   transition: var(--transition);
   font-size: 14px;
+}
+
+/* 导出 PDF 按钮：与录音/停止按钮统一尺寸与交互，使用主题橙色区分功能 */
+.btn-export {
+  background: linear-gradient(135deg, #ff9800, #ffb74d);
+  color: #fff;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 15px rgba(255, 152, 0, 0.35);
+}
+.btn-export:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 152, 0, 0.45);
+}
+.btn-export:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 3px 10px rgba(255, 152, 0, 0.35);
+}
+.btn-export:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-remove:hover {
