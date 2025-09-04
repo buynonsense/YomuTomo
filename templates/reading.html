@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>朗读练习</title>
+    <link rel="stylesheet" href="/static/css/new_style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav-bar">
+        <a href="/" class="nav-button">🏠 回到首页</a>
+      </nav>
+
+      <header class="page-header">
+        <h1>🎤 朗读练习</h1>
+        <p>跟随高亮部分朗读，提升发音准确度</p>
+      </header>
+
+      <main class="main-content">
+        <section class="card control-card">
+          <h2>🎙️ 语音练习</h2>
+          <div class="control-buttons">
+            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
+            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
+          </div>
+          <div id="result" class="result-display"></div>
+        </section>
+
+        <section class="card text-card">
+          <h2>📖 课文内容</h2>
+          <div class="text-content">
+            <div class="text-section">
+              <h3>日语原文</h3>
+              <p class="ruby-text">{{ ruby_text | safe }}</p>
+            </div>
+            <div class="text-section">
+              <h3>中文翻译</h3>
+              <div id="highlight-text" class="highlight-text">{{ translation }}</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card vocab-card">
+          <h2>📚 生词列表</h2>
+          <p>AI提取的可能困难词语，点击可删除已熟悉的词</p>
+          <div class="vocab-container">
+            <div id="vocab-grid" class="vocab-grid">
+              {% for item in vocab %}
+              <div class="vocab-item">
+                <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
+                <div class="vocab-word">{{ item.word }}</div>
+                <div class="vocab-meaning">释义：{{ item.meaning }}</div>
+                <button onclick="removeWord(this)" class="btn-remove">
+                  ❌
+                </button>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/static/js/new_script.js"></script>
+  </body>
+</html>

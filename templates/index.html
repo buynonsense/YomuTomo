@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>日语朗读应用</title>
+    <link rel="stylesheet" href="/static/css/new_style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="hero">
+        <h1>🌸 日语朗读与跟读应用</h1>
+        <p>智能学习，日语发音更准确</p>
+      </header>
+
+      <main class="main-content">
+        <section class="card config-card">
+          <div class="config-header">
+            <h2>⚙️ AI配置</h2>
+            <button id="config-btn" class="btn-config">配置AI设置</button>
+          </div>
+          <div id="config-status" class="config-status">
+            <span id="status-icon">❌</span>
+            <span id="status-text">未配置</span>
+          </div>
+        </section>
+
+        <section class="card input-card">
+          <h2>📝 输入课文</h2>
+          <form action="/process_text" method="post">
+            <div class="input-group">
+              <textarea id="text" name="text" rows="8" required></textarea>
+              <label for="text">日语课文</label>
+            </div>
+            <button type="submit" class="btn-primary">🚀 开始练习</button>
+          </form>
+        </section>
+      </main>
+
+      <!-- AI配置弹窗 -->
+      <div id="config-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>🤖 AI配置设置</h3>
+            <button id="close-modal" class="btn-close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="input-group">
+              <input type="text" id="modal-api-key" autocomplete="off" />
+              <label for="modal-api-key">API Key</label>
+            </div>
+            <div class="input-group">
+              <input type="text" id="modal-base-url" autocomplete="off" />
+              <label for="modal-base-url">Base URL</label>
+            </div>
+            <div class="input-group">
+              <select id="modal-model">
+                <option value="gpt-5-mini">GPT-5-mini</option>
+                <option value="gpt-5">GPT-5</option>
+                <option value="gpt-5-nano">GPT-5-nano</option>
+              </select>
+              <label for="modal-model">AI模型</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="save-config" class="btn-primary">保存配置</button>
+            <button id="cancel-config" class="btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="/static/js/new_script.js"></script>
+  </body>
+</html>
