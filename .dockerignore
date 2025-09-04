@@ -1,0 +1,36 @@
+# Exclude venvs and caches
+.venv
+venv
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+
+# Git / IDE
+.git
+.gitignore
+.vscode
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Logs / temp
+*.log
+/tmp
+*.swp
+.DS_Store
+
+# Node / front-end caches if any
+node_modules
+
+# Local data / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Tests artifacts
+.coverage
+htmlcov/
