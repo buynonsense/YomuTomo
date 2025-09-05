@@ -228,24 +228,12 @@ function initSpeechRecognition() {
             const highlightText = document.getElementById('highlight-text');
             if (highlightText) {
                 // 从隐藏元素获取原文数据
-                const originalTextElement = document.getElementById('original-text');
                 const rubyTextElement = document.getElementById('ruby-text-data');
-                const originalText = originalTextElement ? originalTextElement.textContent : '';
                 const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
 
-                // 初始状态：所有词都是待读状态
-                const words = originalText.split(/\s+/);
-                let initialHTML = rubyText;
-
-                // 将所有词标记为待读状态
-                words.forEach(word => {
-                    if (word.trim()) {
-                        const regex = new RegExp(`(${word})`, 'g');
-                        initialHTML = initialHTML.replace(regex, `<span class="karaoke-pending">$1</span>`);
-                    }
-                });
-
-                highlightText.innerHTML = initialHTML;
+                // 直接显示带注音的原文，添加荧光效果
+                highlightText.innerHTML = rubyText;
+                highlightText.classList.add('glow-active');
             }
         });
     }
@@ -262,6 +250,11 @@ function initSpeechRecognition() {
             const readingContainer = document.querySelector('.main-content');
             if (readingContainer) {
                 readingContainer.classList.remove('recording-active');
+            }
+
+            const highlightText = document.getElementById('highlight-text');
+            if (highlightText) {
+                highlightText.classList.remove('glow-active');
             }
         });
     }
@@ -285,7 +278,8 @@ function initSpeechRecognition() {
 
         // Highlight matching text
         if (finalTranscript) {
-            highlightText(finalTranscript);
+            // 简化：不再进行复杂的跟随高亮，只是显示识别文本
+            // highlightText(finalTranscript);
         }
     };
 
@@ -322,6 +316,11 @@ function resetButtons() {
     const readingContainer = document.querySelector('.main-content');
     if (readingContainer) {
         readingContainer.classList.remove('recording-active');
+    }
+
+    const highlightText = document.getElementById('highlight-text');
+    if (highlightText) {
+        highlightText.classList.remove('glow-active');
     }
 }
 
