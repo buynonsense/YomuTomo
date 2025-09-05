@@ -50,7 +50,7 @@ services:
       # 生产环境标志
       ENVIRONMENT: production
     ports:
-      - "127.0.0.1:8000:3434"  # 只绑定到本地，通过反向代理暴露
+      - "127.0.0.1:3434:3434"  # 只绑定到本地，通过反向代理暴露
     networks:
       - yomu_network
     depends_on:
@@ -64,10 +64,10 @@ services:
     tmpfs:
       - /tmp
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3434/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  test: ["CMD", "curl", "-f", "http://localhost:3434/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
 
   # Nginx反向代理（可选，用于生产环境）
   nginx:
@@ -94,4 +94,4 @@ volumes:
 networks:
   yomu_network:
     driver: bridge
-    internal: true  # 生产环境网络隔离
+    # internal: true  # 移除以允许容器访问外网（需要调用 OpenAI 接口）

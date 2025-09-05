@@ -1,3 +1,13 @@
+# YomuTomo
+注意：项目已完全切换到 PostgreSQL。若文档其他位置仍残留 SQLite 描述属历史遗留，将逐步清理。
+
+迁移概要：
+1. 新增 `docker-compose` 提供 postgres 服务；
+2. `DATABASE_URL` 通过环境变量传入（示例：`postgresql://user:password@postgres:5432/yomu_prod`）；
+3. Alembic 管理表结构（`alembic upgrade head`）。
+4. 旧的 `app.py` 单文件结构已被模块化（`app/main.py`）替代，仅保留兼容入口。
+
+TODO[TechDebt]: README 残留 SQLite 说明 - 快速迁移后未彻底校对 - 全文审校并移除无关段落（文档回顾排期后）
 # YomuTomo（日语朗读与跟读）
 
 简洁的 FastAPI 应用：输入日语文本，自动生成假名注音、中文翻译与生词列表；支持录音评测与用户登录后保存多篇文章（Dashboard 按最近更新时间排序，打开文章自动置顶）。

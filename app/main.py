@@ -27,6 +27,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -43,5 +44,9 @@ app.include_router(pages.router)
 app.include_router(auth.router)
 app.include_router(articles.router)
 app.include_router(evaluation.router)
+
+@app.get('/health')
+def health():
+    return {'status': 'ok'}
 
 

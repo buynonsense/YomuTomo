@@ -16,6 +16,12 @@ _default_client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settin
 
 
 def get_openai_client(api_key: str | None, base_url: str | None):
+    # 简单调试日志（生产可改为使用logging）
+    try:
+        masked = (api_key[:6] + '***' + api_key[-4:]) if api_key and len(api_key) > 10 else ('None' if not api_key else '***')
+        print(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}; env base_url={settings.OPENAI_BASE_URL or 'None'}")
+    except Exception:
+        pass
     if api_key:
         return openai.OpenAI(api_key=api_key, base_url=base_url or None)
     return _default_client
@@ -48,7 +54,8 @@ def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: 
         )
         content = resp.choices[0].message.content.strip()
         return content or kakasi_ruby_html
-    except Exception:
+    except Exception as e:
+        print(f"[AI] _ai_fix_ruby failed: {e}")
         return kakasi_ruby_html
 
 
@@ -65,7 +72,8 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
         )
         content = resp.choices[0].message.content.strip()
         return content
-    except Exception:
+    except Exception as e:
+        print(f"[AI] _ai_ruby failed: {e}")
         return _kakasi_ruby(original_text)
 
 
@@ -113,7 +121,8 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = Non
             import re
             words = re.findall(r'"([^"]*)"', content)
             return [{"word": word, "meaning": "释义待补充", "pronunciation": "读音待补充"} for word in words]
-    except Exception as _:
+    except Exception as e:
+        print(f"[AI] extract_vocabulary failed: {e}")
         return []
 
 
@@ -135,7 +144,8 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI | None = N
         )
         translation = response.choices[0].message.content.strip()
         return translation
-    except Exception:
+    except Exception as e:
+        print(f"[AI] translate_to_chinese failed: {e}")
         return "翻译失败，请检查AI配置"
 
 
@@ -174,7 +184,8 @@ def generate_title(text: str, model: str, client: openai.OpenAI | None = None) -
         if not re.search(r'[\u4e00-\u9fff]', title):
             title = "朗读练习"
         return title or "朗读练习"
-    except Exception:
+    except Exception as e:
+        print(f"[AI] generate_title failed: {e}")
         return "朗读练习"
 
 
@@ -249,7 +260,8 @@ def generate_emoji(text: str, model: str, client: openai.OpenAI | None = None) -
         if len(emoji) > 4:
             emoji = emoji.split()[0]
         return emoji
-    except Exception:
+    except Exception as e:
+        print(f"[AI] generate_emoji failed: {e}")
         return "📝"
 
 

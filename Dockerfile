@@ -11,10 +11,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # System deps for building some wheels (e.g. pyaudio needs portaudio)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       build-essential \
-       portaudio19-dev \
-    && rm -rf /var/lib/apt/lists/*
+     && apt-get install -y --no-install-recommends \
+         build-essential \
+         portaudio19-dev \
+         curl \
+         ca-certificates \
+         tzdata \
+     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -33,7 +36,8 @@ EXPOSE 3434
 
 # Environment (override OPENAI_API_KEY at runtime: -e OPENAI_API_KEY=sk-xxx)
 ENV OPENAI_API_KEY="" \
-    OPENAI_MODEL="gpt-5-mini"
+    OPENAI_MODEL="gpt-5-mini" \
+    PYTHONPATH="/app"
 
 # Default command (no reload in container; mount source + override CMD for dev if needed)
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3434"]

@@ -11,16 +11,15 @@ import os
 import json
 from datetime import datetime
 from typing import Optional
+"""兼容入口
 
-from starlette.middleware.sessions import SessionMiddleware
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session as OrmSession
-from sqlalchemy import create_engine
-from passlib.context import CryptContext
+保留：旧部署脚本可能仍引用 `app:app`。
+真实入口：`app.main:app`。
 
-from app.main import app
+TODO[TechDebt]: 保留兼容入口 - 防止旧部署脚本失效 - 逐步统一到 uvicorn app.main:app （确认无旧引用后删除）
+"""
 
-# OpenAPI 标签元数据（中文）
+from app.main import app  # type: ignore  # noqa
 tags_metadata = [
     {"name": "主页", "description": "首页与静态页面相关接口。"},
     {"name": "认证", "description": "用户注册、登录、退出登录。"},
