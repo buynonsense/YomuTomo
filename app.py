@@ -46,9 +46,9 @@ tags_metadata = [
 # Session middleware (set SECRET_KEY via env)
 # app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-secret-key-change-me"))
 
-# Database setup (SQLite file)
-# DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-# engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
+# Database setup (PostgreSQL)
+# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5432/yomu_pg")
+# engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 # SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Base = declarative_base()
 

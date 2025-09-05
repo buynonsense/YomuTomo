@@ -36,7 +36,7 @@ ENV OPENAI_API_KEY="" \
     OPENAI_MODEL="gpt-5-mini"
 
 # Default command (no reload in container; mount source + override CMD for dev if needed)
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "3434"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3434"]
 
 # For development (example):
 # docker build -t yomu-dev --build-arg PYTHON_VERSION=3.11 .

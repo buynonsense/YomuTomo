@@ -18,14 +18,160 @@
    - 兼容：`python -m uvicorn app:app --reload`
 3. 访问：`http://127.0.0.1:8000`（首页） | 文档：`/docs` | ReDoc：`/redoc`
 
-## 配置（环境变量）
+## 使用 Makefile（推荐）
 
-- `OPENAI_API_KEY`：OpenAI/兼容网关的 API Key（必需）
-- `OPENAI_BASE_URL`：可选，自定义网关地址
-- `OPENAI_MODEL`：默认 `gpt-5-mini`
-- `SECRET_KEY`：会话密钥（建议随机字符串）
-- `DATABASE_URL`：默认 `sqlite:///./app.db`
-- `FURIGANA_MODE`：假名模式，`kakasi` | `hybrid`(默认) | `ai`
+项目提供了 Makefile 来简化常见操作：
+
+```bash
+# 安装依赖
+make install
+
+# 启动开发服务器
+make dev
+
+# Docker 操作
+make build    # 构建镜像
+make up       # 启动服务
+make down     # 停止服务
+make logs     # 查看日志
+
+# 生产部署
+make deploy   # 生产环境部署
+
+# 数据库维护
+make backup   # 备份数据库
+make restore file=backup.sql  # 恢复数据库
+
+# 代码质量
+make format   # 格式化代码
+make lint     # 检查代码
+```
+
+## Docker 部署
+
+### 使用 Docker Compose（推荐）
+
+1. **克隆项目并进入目录**：
+   ```bash
+   git clone <repository-url>
+   cd YomuTomo
+   ```
+
+2. **配置环境变量**：
+   ```bash
+   cp .env.example .env
+   # 编辑 .env 文件，设置你的配置
+   ```
+
+3. **启动服务**：
+   ```bash
+   docker-compose up -d
+   ```
+
+### 生产环境部署
+
+1. **使用生产配置**：
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+2. **启用 Nginx 反向代理**：
+   ```bash
+   docker-compose -f docker-compose.prod.yml --profile nginx up -d
+   ```
+
+3. **查看日志**：
+   ```bash
+   docker-compose logs -f
+   ```
+
+4. **停止服务**：
+   ```bash
+   docker-compose down
+   ```
+
+## 架构说明
+
+### 开发环境
+- **数据库**：PostgreSQL（Docker容器）
+- **应用**：直接运行 FastAPI
+- **配置**：环境变量或 .env 文件
+
+### 生产环境
+- **数据库**：PostgreSQL（容器化）
+- **应用**：Docker 容器
+- **代理**：Nginx（可选）
+- **网络**：内部网络隔离
+- **安全**：最小权限原则
+
+### 服务说明
+- **postgres**：PostgreSQL 15 数据库
+- **yomu_app**：FastAPI 应用
+- **nginx**：反向代理（生产环境可选）
+
+## 备份与维护
+
+### 数据库备份
+```bash
+# 备份数据库
+docker exec yomu_postgres pg_dump -U postgres yomu_pg > backup.sql
+
+# 恢复数据库
+docker exec -i yomu_postgres psql -U postgres yomu_pg < backup.sql
+```
+
+### 日志查看
+```bash
+# 查看应用日志
+docker-compose logs -f yomu_app
+
+# 查看数据库日志
+docker-compose logs -f postgres
+```
+
+### 单独使用 Docker
+
+1. **构建镜像**：
+   ```bash
+   docker build -t yomu-app .
+   ```
+
+2. **运行容器**：
+   ```bash
+   docker run -d \
+     --name yomu-app \
+     -p 8000:3434 \
+     -e OPENAI_API_KEY=your_key \
+     -e DATABASE_URL=postgresql://host:port/db \
+     yomu-app
+   ```
+
+## 环境变量配置
+
+创建 `.env` 文件或直接设置环境变量：
+
+```bash
+# 数据库配置
+POSTGRES_PASSWORD=your_secure_password
+
+# AI配置
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-5-mini
+
+# 应用配置
+SECRET_KEY=your_secret_key_here
+FURIGANA_MODE=hybrid
+```
+
+## 数据库
+
+项目使用 PostgreSQL 数据库：
+
+- **开发环境**：PostgreSQL（Docker容器）
+- **生产环境**：PostgreSQL（推荐）
+
+Docker Compose 会自动启动 PostgreSQL 容器并创建数据库。
 
 ## OpenAI 请求头覆盖（推荐）
 
@@ -56,7 +202,7 @@ curl -X POST "http://127.0.0.1:8000/process_text" \
 ## 数据库与迁移
 
 - ORM：SQLAlchemy ORM（`User` 一对多 `Article`）
-- 默认数据库：SQLite（`app.db`）
+- 默认数据库：PostgreSQL（Docker容器）
 - 迁移：Alembic
   1. 生成迁移：`alembic revision --autogenerate -m "init"`
   2. 应用迁移：`alembic upgrade head`
@@ -102,8 +248,8 @@ alembic/ alembic.ini    # 数据库迁移
    - `OPENAI_BASE_URL`: 可选，自定义 API Base URL
    - `OPENAI_MODEL`: 可选，默认 `gpt-5-mini`
    - `SECRET_KEY`: 会话密钥（用于登录会话），建议设置为随机字符串
-   - `DATABASE_URL`: 可选，默认 `sqlite:///./app.db`
-3. 初始化数据库：应用启动时会自动在 `app.db` 创建表
+   - `DATABASE_URL`: 可选，默认 `postgresql://postgres:1234@localhost:5432/yomu_pg`
+3. 初始化数据库：启动 Docker Compose 会自动创建数据库和表
 4. 运行应用：
    - 新入口：`python -m uvicorn app.main:app --reload`
    - 兼容入口（保留）：`python -m uvicorn app:app --reload`

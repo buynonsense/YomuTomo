@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: yomu_postgres
+    environment:
+      POSTGRES_DB: yomu_pg
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - yomu_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # YomuTomo应用
+  yomu_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yomu_app
+    environment:
+      # 数据库配置
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-1234}@postgres:5432/yomu_pg
+      # AI配置
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      # 应用配置
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-me}
+      FURIGANA_MODE: ${FURIGANA_MODE:-hybrid}
+    ports:
+      - "8000:3434"
+    networks:
+      - yomu_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      # 如果需要热重载开发，可以取消注释下面的行
+      # - .:/app
+      # - /app/__pycache__
+
+volumes:
+  postgres_data:
+
+networks:
+  yomu_network:
+    driver: bridge
