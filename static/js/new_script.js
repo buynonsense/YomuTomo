@@ -647,3 +647,27 @@ function buildPDFNode() {
     document.body.appendChild(wrap);
     return wrap;
 }
+
+// 回到顶部按钮功能
+document.addEventListener('DOMContentLoaded', function() {
+    const backToTopBtn = document.getElementById('back-to-top');
+
+    if (backToTopBtn) {
+        // 监听滚动事件
+        window.addEventListener('scroll', function() {
+            if (window.pageYOffset > 300) { // 滚动超过300px时显示按钮
+                backToTopBtn.classList.add('visible');
+            } else {
+                backToTopBtn.classList.remove('visible');
+            }
+        });
+
+        // 点击按钮回到顶部
+        backToTopBtn.addEventListener('click', function() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth' // 平滑滚动
+            });
+        });
+    }
+});

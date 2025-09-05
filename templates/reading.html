@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{{ title or '朗读练习' }}</title>
-  <link rel="stylesheet" href="/static/css/new_style.css" />
+    <title>YomuTomo</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="alternate icon" href="/static/favicon.ico" />
+    <link rel="stylesheet" href="/static/css/new_style.css" />
   <!-- PDF 依赖 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -42,16 +44,6 @@
           </div>
         </section>
 
-        <section class="card control-card">
-          <h2>🎙️ 语音练习</h2>
-          <div class="control-buttons">
-            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
-            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
-            <button id="export-pdf-btn" class="btn-export">📄 导出PDF</button>
-          </div>
-          <div id="result" class="result-display"></div>
-        </section>
-
         <section class="card vocab-card">
           <h2>📚 生词列表</h2>
           <p>AI提取的可能困难词语，点击可删除已熟悉的词</p>
@@ -70,8 +62,26 @@
             </div>
           </div>
         </section>
+
+        <section class="card control-card">
+          <h2>🎙️ 语音练习</h2>
+          <div class="control-buttons">
+            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
+            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
+            <button id="export-pdf-btn" class="btn-export">📄 导出PDF</button>
+          </div>
+          <div id="result" class="result-display"></div>
+        </section>
       </main>
     </div>
+
+    <!-- 回到顶部按钮 -->
+    <button id="back-to-top" class="back-to-top-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 19V5M5 12L12 5L19 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
     <script src="/static/js/new_script.js"></script>
   </body>
 </html>
