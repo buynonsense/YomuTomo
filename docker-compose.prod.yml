@@ -1,8 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL数据库 - 生产环境配置
-  postgres:
+  postgres:  # PostgreSQL数据库 - 生产环境配置
     image: postgres:15-alpine
     container_name: yomu_postgres_prod
     environment:
@@ -14,7 +13,7 @@ services:
       - postgres_prod_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:5432:5432"  # 只绑定到本地
+      - "127.0.0.1:5432:5432"
     networks:
       - yomu_network
     restart: unless-stopped
@@ -23,7 +22,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    # 生产环境安全配置
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -31,46 +29,39 @@ services:
       - /tmp
       - /var/run/postgresql
 
-  # YomuTomo应用 - 生产环境配置
-  yomu_app:
+  yomu_app:  # 应用
     build:
       context: .
       dockerfile: Dockerfile
     container_name: yomu_app_prod
     environment:
-      # 数据库配置
       DATABASE_URL: postgresql://${POSTGRES_USER:-yomu_user}:${POSTGRES_PASSWORD}@postgres:5432/yomu_prod
-      # AI配置
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
-      # 应用配置
       SECRET_KEY: ${SECRET_KEY}
       FURIGANA_MODE: ${FURIGANA_MODE:-hybrid}
-      # 生产环境标志
       ENVIRONMENT: production
     ports:
-      - "127.0.0.1:3434:3434"  # 只绑定到本地，通过反向代理暴露
+      - "127.0.0.1:3434:3434"
     networks:
       - yomu_network
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    # 生产环境安全配置
     security_opt:
       - no-new-privileges:true
     read_only: true
     tmpfs:
       - /tmp
     healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:3434/health"]
-  interval: 30s
-  timeout: 10s
-  retries: 3
+      test: ["CMD", "curl", "-f", "http://localhost:3434/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Nginx反向代理（可选，用于生产环境）
-  nginx:
+  nginx:  # 可选反向代理
     image: nginx:alpine
     container_name: yomu_nginx
     ports:
@@ -85,7 +76,7 @@ services:
       - yomu_app
     restart: unless-stopped
     profiles:
-      - nginx  # 可选服务，需要时启用：docker-compose --profile nginx up
+      - nginx
 
 volumes:
   postgres_prod_data:
@@ -94,4 +85,4 @@ volumes:
 networks:
   yomu_network:
     driver: bridge
-    # internal: true  # 移除以允许容器访问外网（需要调用 OpenAI 接口）
+    # internal: true
