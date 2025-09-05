@@ -194,11 +194,20 @@ body {
   backdrop-filter: blur(10px);
   transition: var(--transition);
   border: 1px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer; /* 统一手型指针 */
 }
 
 .nav-button:hover {
   background: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
+}
+/* 确保按钮元素(nav-button类)无默认按钮背景/边框差异 */
+button.nav-button, .nav-bar button.nav-button {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+}
+button.nav-button:hover, .nav-bar button.nav-button:hover {
+  background: rgba(255,255,255,0.3);
 }
 
 /* Card Component */

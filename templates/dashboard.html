@@ -14,8 +14,15 @@
         .pagination-info { color:#fff; font-size:14px; }
       </style>
       <nav class="nav-bar">
+        <style>
+          .user-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:rgba(255,255,255,.9); color:#333; border-radius:22px; font-size:14px; font-weight:500; box-shadow:0 2px 6px rgba(0,0,0,.08); backdrop-filter:blur(4px); }
+          .nav-bar .nav-button { border-radius:22px !important; margin-left:10px; }
+          .nav-bar form { display:inline; }
+        </style>
+        {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
         <a href="/" class="nav-button">🏠 首页</a>
-        <form method="post" action="/logout" style="display: inline">
+        <a href="/dashboard" class="nav-button">📚 我的文章</a>
+        <form method="post" action="/logout" style="display:inline">
           <button type="submit" class="nav-button">🚪 退出登录</button>
         </form>
       </nav>
