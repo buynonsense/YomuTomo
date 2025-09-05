@@ -12,3 +12,4 @@ passlib[bcrypt]
 itsdangerous
 python-dotenv
 alembic
+psycopg2-binary

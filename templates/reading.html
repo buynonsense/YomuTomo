@@ -17,20 +17,10 @@
 
       <header class="page-header">
   <h1>🎤 {{ title }}</h1>
-  <p>跟随高亮部分朗读，提升发音准确度（刷新不会重复生成）</p>
+  <p>跟随高亮部分朗读，提升发音准确度</p>
       </header>
 
       <main class="main-content">
-        <section class="card control-card">
-          <h2>🎙️ 语音练习</h2>
-          <div class="control-buttons">
-            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
-            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
-            <button id="export-pdf-btn" class="btn-export">📄 导出PDF</button>
-          </div>
-          <div id="result" class="result-display"></div>
-        </section>
-
         <section class="card text-card">
           <h2>📖 课文内容</h2>
           <!-- 隐藏的数据存储，用于JavaScript访问 -->
@@ -50,6 +40,16 @@
               <div class="translation-text">{{ translation }}</div>
             </div>
           </div>
+        </section>
+
+        <section class="card control-card">
+          <h2>🎙️ 语音练习</h2>
+          <div class="control-buttons">
+            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
+            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
+            <button id="export-pdf-btn" class="btn-export">📄 导出PDF</button>
+          </div>
+          <div id="result" class="result-display"></div>
         </section>
 
         <section class="card vocab-card">

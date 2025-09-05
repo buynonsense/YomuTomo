@@ -18,16 +18,18 @@ def get_current_user(request: Request, db: Session):
     return db.query(User).filter(User.id == user_id).first()
 
 
-def require_login(request: Request, db: Session) -> User:
+def require_login(request: Request, db: Session) -> User | None:
     user = get_current_user(request, db)
     if not user:
-        raise RedirectResponse(url="/login", status_code=303)
+        return None
     return user
 
 
 @router.get("/dashboard", response_class=HTMLResponse, summary="我的文章仪表盘")
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
     articles = (
         db.query(Article)
         .filter(Article.user_id == user.id)
@@ -101,6 +103,8 @@ async def process_text(
 @router.get("/articles/{article_id}", response_class=HTMLResponse, summary="查看文章详情")
 async def view_article(article_id: int, request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if not article:
         return RedirectResponse(url="/dashboard", status_code=303)
@@ -125,6 +129,8 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
 @router.post("/articles/{article_id}/delete", summary="删除文章")
 async def delete_article(article_id: int, request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if article:
         db.delete(article)
@@ -135,6 +141,8 @@ async def delete_article(article_id: int, request: Request, db: Session = Depend
 @router.post("/articles/{article_id}/rename", summary="修改文章标题")
 async def rename_article(article_id: int, request: Request, title: str = Form(...), db: Session = Depends(get_db)):
     user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if article and title.strip():
         article.title = title.strip()
