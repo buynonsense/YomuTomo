@@ -17,7 +17,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # 导入应用的 Base 元数据
-from app import Base  # noqa: E402
+# 新的模块化路径：从 app.db 导入 Base
+from app.db import Base  # noqa: E402
 target_metadata = Base.metadata
 
 
