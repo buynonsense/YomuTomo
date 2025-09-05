@@ -28,7 +28,7 @@
               <div class="bubble-main" onclick="openArticle({{ a.id }})" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
-                <div class="bubble-meta">更新：{{ a.updated_at }}</div>
+                <div class="bubble-meta">更新：{{ a.updated_at|string|slice(0,19) }}</div>
               </div>
               <button class="bubble-menu-btn" onclick="showActionPanel(event, {{ a.id }})" aria-label="更多操作">⋯</button>
             </div>
