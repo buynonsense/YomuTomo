@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>我的文章</title>
+    <link rel="stylesheet" href="/static/css/new_style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav-bar">
+        <a href="/" class="nav-button">🏠 首页</a>
+        <form method="post" action="/logout" style="display: inline">
+          <button type="submit" class="nav-button">🚪 退出登录</button>
+        </form>
+      </nav>
+      <header class="page-header">
+        <h1>🗂️ 我的文章</h1>
+        <p>按最近更新排序。打开文章会自动刷新它的更新时间。</p>
+      </header>
+      <main class="main-content">
+        <section class="card">
+          <h2>已保存</h2>
+          {% if articles and articles|length > 0 %}
+          <ul>
+            {% for a in articles %}
+            <li
+              style="
+                margin: 8px 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <span>
+                <a href="/articles/{{ a.id }}" class="nav-button"
+                  >{{ a.title }}</a
+                >
+                <small style="margin-left: 8px; color: #888"
+                  >更新：{{ a.updated_at }}</small
+                >
+              </span>
+              <form
+                method="post"
+                action="/articles/{{ a.id }}/delete"
+                onsubmit="return confirm('确定删除该文章吗？');"
+              >
+                <button type="submit" class="btn-secondary">删除</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p>还没有保存的文章。回到首页粘贴文本后开始生成吧。</p>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

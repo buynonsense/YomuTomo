@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request, Form, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, Form, Depends
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import pykakasi
@@ -9,10 +9,88 @@ import difflib
 import openai
 import os
 import json
+from datetime import datetime
+from typing import Optional
 
-app = FastAPI()
+from starlette.middleware.sessions import SessionMiddleware
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session as OrmSession
+from sqlalchemy import create_engine
+from passlib.context import CryptContext
+
+# OpenAPI 标签元数据（中文）
+tags_metadata = [
+    {"name": "主页", "description": "首页与静态页面相关接口。"},
+    {"name": "认证", "description": "用户注册、登录、退出登录。"},
+    {"name": "处理", "description": "对课文进行注音、翻译与生词提取。"},
+    {"name": "文章", "description": "文章的查看、列表、删除与更新时间刷新。"},
+    {"name": "评测", "description": "朗读评测接口。"},
+]
+
+app = FastAPI(
+    title="YomuTomo 日语朗读应用 API",
+    description=(
+        "提供课文注音、翻译、生词提取与朗读评测功能；"
+        "支持用户登录后将生成结果保存为文章，并在仪表盘按更新时间排序。"
+    ),
+    version="1.0.0",
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# Session middleware (set SECRET_KEY via env)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "dev-secret-key-change-me"))
+
+# Database setup (SQLite file)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    articles = relationship("Article", back_populates="user", cascade="all, delete-orphan")
+
+
+class Article(Base):
+    __tablename__ = "articles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    original = Column(Text, nullable=False)
+    ruby_html = Column(Text, nullable=False)
+    translation = Column(Text, nullable=False)
+    vocab_json = Column(Text, nullable=False)  # stored as JSON string
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="articles")
+
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def get_db() -> OrmSession:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def create_db() -> None:
+    Base.metadata.create_all(bind=engine)
 
 kks = pykakasi.kakasi()
 
@@ -137,17 +215,109 @@ def generate_title(text, model="gpt-5-mini"):
         print(f"AI生成标题失败: {e}")
         return "朗读练习"
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/process_text", response_class=HTMLResponse)
+def get_current_user(request: Request, db: OrmSession) -> Optional[User]:
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return None
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def require_login(request: Request, db: OrmSession) -> User:
+    user = get_current_user(request, db)
+    if not user:
+        raise RedirectResponse(url="/login", status_code=303)
+    return user
+
+@app.get("/", response_class=HTMLResponse, tags=["主页"], summary="首页", description="返回应用首页，用于输入课文与进行 AI 配置。")
+async def home(request: Request, db: OrmSession = Depends(get_db)):
+    user = get_current_user(request, db)
+    return templates.TemplateResponse("index.html", {"request": request, "user": user})
+
+
+@app.get("/register", response_class=HTMLResponse, tags=["认证"], summary="注册页面", description="返回用户注册页面。")
+async def register_page(request: Request, db: OrmSession = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return templates.TemplateResponse("register.html", {"request": request})
+
+
+@app.post("/register", tags=["认证"], summary="提交注册", description="创建新用户并自动登录。")
+async def register(
+    request: Request,
+    email: str = Form(..., description="邮箱，用作登录账号"),
+    password: str = Form(..., description="密码，将进行哈希存储"),
+    db: OrmSession = Depends(get_db),
+):
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        return templates.TemplateResponse("register.html", {"request": request, "error": "邮箱已被注册"})
+    password_hash = pwd_context.hash(password)
+    user = User(email=email, password_hash=password_hash)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    request.session["user_id"] = user.id
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse, tags=["认证"], summary="登录页面", description="返回用户登录页面。")
+async def login_page(request: Request, db: OrmSession = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/login", tags=["认证"], summary="提交登录", description="校验用户邮箱与密码，登录成功后写入会话。")
+async def login(
+    request: Request,
+    email: str = Form(..., description="邮箱"),
+    password: str = Form(..., description="密码"),
+    db: OrmSession = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not pwd_context.verify(password, user.password_hash):
+        return templates.TemplateResponse("login.html", {"request": request, "error": "邮箱或密码错误"})
+    request.session["user_id"] = user.id
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@app.post("/logout", tags=["认证"], summary="退出登录", description="清空会话并跳转到首页。")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["文章"], summary="我的文章仪表盘", description="列出当前用户的文章，按最近更新时间倒序排序。")
+async def dashboard(request: Request, db: OrmSession = Depends(get_db)):
+    user = require_login(request, db)
+    articles = (
+        db.query(Article)
+        .filter(Article.user_id == user.id)
+        .order_by(Article.updated_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user, "articles": articles})
+
+@app.post(
+    "/process_text",
+    response_class=HTMLResponse,
+    tags=["处理"],
+    summary="处理日语文本",
+    description=(
+        "将提交的日语课文进行假名注音、生词提取与中文翻译，并生成标题。"
+        "若用户已登录，会自动保存为文章并跳转到详情页面；若未登录，则直接返回预览页面。"
+    ),
+)
 async def process_text(
     request: Request,
-    text: str = Form(...),
-    api_key: str = Form(None),
-    base_url: str = Form(None),
-    model: str = Form(None)
+    text: str = Form(..., description="日语课文原文"),
+    api_key: str = Form(None, description="可选，覆盖默认或环境变量中的 API Key"),
+    base_url: str = Form(None, description="可选，自定义 OpenAI Base URL"),
+    model: str = Form(None, description="可选，模型名称，默认 gpt-5-mini"),
+    db: OrmSession = Depends(get_db)
 ):
     """处理文本并生成阅读页面。
     优先顺序：自定义请求头 > 表单字段 > 环境变量默认值。
@@ -176,14 +346,92 @@ async def process_text(
     translation = translate_to_chinese(text, final_model)
     # 生成标题
     title = generate_title(text, final_model)
+
+    # 若已登录则保存为文章并跳转详情
+    user = get_current_user(request, db)
+    if user:
+        article = Article(
+            user_id=user.id,
+            title=title,
+            original=text,
+            ruby_html=ruby_text,
+            translation=translation,
+            vocab_json=json.dumps(vocab, ensure_ascii=False),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(article)
+        db.commit()
+        db.refresh(article)
+        return RedirectResponse(url=f"/articles/{article.id}", status_code=303)
+
+    # 未登录则直接展示结果（不保存）
     return templates.TemplateResponse(
         "reading.html",
         {"request": request, "original": text, "ruby_text": ruby_text, "vocab": vocab, "translation": translation, "title": title}
     )
 
-@app.post("/evaluate")
-async def evaluate(request: Request, original: str = Form(...), recognized: str = Form(...)):
+@app.post(
+    "/evaluate",
+    tags=["评测"],
+    summary="朗读评测",
+    description="根据原文与识别文本的相似度计算分数（0-100）。",
+)
+async def evaluate(
+    request: Request,
+    original: str = Form(..., description="原始日语文本"),
+    recognized: str = Form(..., description="语音识别得到的文本"),
+):
     # 简单评测：相似度
     similarity = difflib.SequenceMatcher(None, original, recognized).ratio()
     score = int(similarity * 100)
     return JSONResponse({"score": score, "similarity": similarity})
+
+
+@app.get(
+    "/articles/{article_id}",
+    response_class=HTMLResponse,
+    tags=["文章"],
+    summary="查看文章详情",
+    description="进入文章时会刷新其更新时间，以便在仪表盘置顶。",
+)
+async def view_article(article_id: int, request: Request, db: OrmSession = Depends(get_db)):
+    user = require_login(request, db)
+    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    if not article:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    # 进入文章刷新更新时间
+    article.updated_at = datetime.utcnow()
+    db.commit()
+    vocab = json.loads(article.vocab_json)
+    return templates.TemplateResponse(
+        "reading.html",
+        {
+            "request": request,
+            "original": article.original,
+            "ruby_text": article.ruby_html,
+            "vocab": vocab,
+            "translation": article.translation,
+            "title": article.title,
+        },
+    )
+
+
+@app.post(
+    "/articles/{article_id}/delete",
+    tags=["文章"],
+    summary="删除文章",
+    description="删除当前用户的一篇文章，并返回仪表盘。",
+)
+async def delete_article(article_id: int, request: Request, db: OrmSession = Depends(get_db)):
+    user = require_login(request, db)
+    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    if article:
+        db.delete(article)
+        db.commit()
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@app.on_event("startup")
+async def on_startup():
+    create_db()

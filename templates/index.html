@@ -13,6 +13,19 @@
         <p>智能学习，日语发音更准确</p>
       </header>
 
+      <nav class="nav-bar">
+        {% if user %}
+        <span>👋 {{ user.email }}</span>
+        <a href="/dashboard" class="nav-button">📚 我的文章</a>
+        <form method="post" action="/logout" style="display: inline">
+          <button type="submit" class="nav-button">🚪 退出登录</button>
+        </form>
+        {% else %}
+        <a href="/login" class="nav-button">登录</a>
+        <a href="/register" class="nav-button">注册</a>
+        {% endif %}
+      </nav>
+
       <main class="main-content">
         <section class="card config-card">
           <div class="config-header">

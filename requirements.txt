@@ -7,3 +7,7 @@ pyaudio
 aiofiles
 python-multipart
 openai
+SQLAlchemy>=2.0
+passlib[bcrypt]
+itsdangerous
+python-dotenv
