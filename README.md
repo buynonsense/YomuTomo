@@ -25,6 +25,7 @@
 - `OPENAI_MODEL`：默认 `gpt-5-mini`
 - `SECRET_KEY`：会话密钥（建议随机字符串）
 - `DATABASE_URL`：默认 `sqlite:///./app.db`
+- `FURIGANA_MODE`：假名模式，`kakasi` | `hybrid`(默认) | `ai`
 
 ## OpenAI 请求头覆盖（推荐）
 
@@ -41,9 +42,16 @@ curl -X POST "http://127.0.0.1:8000/process_text" \
   -H "X-API-Key: DSK-xxxx" \
   -H "X-Base-URL: https://dashscope.aliyuncs.com/compatible-mode/v1" \
   -H "X-Model: qwen-plus" \
+  -H "X-Furigana-Mode: hybrid" \
   -F "text=今日はいい天気ですね。" \
   -F "model=qwen-plus"
 ```
+
+说明：
+
+- `FURIGANA_MODE=kakasi`：仅 pykakasi（最快，可能有误）
+- `FURIGANA_MODE=hybrid`：先 kakasi，后 AI 校正（推荐）
+- `FURIGANA_MODE=ai`：完全由 AI 生成 ruby（最准确，最慢/成本最高）
 
 ## 数据库与迁移
 

@@ -19,7 +19,7 @@ def get_openai_client(api_key: str | None, base_url: str | None):
     return _default_client
 
 
-def generate_ruby(text: str) -> str:
+def _kakasi_ruby(text: str) -> str:
     result = kks.convert(text)
     ruby_html = ''
     for item in result:
@@ -30,6 +30,52 @@ def generate_ruby(text: str) -> str:
         else:
             ruby_html += f"<ruby>{orig}<rt>{hira}</rt></ruby>"
     return ruby_html
+
+
+def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: openai.OpenAI) -> str:
+    prompt = (
+        "你是日语教师。请对下面的带有ruby标注的HTML进行校对，确保每个汉字词的假名准确。"
+        "只返回修正后的HTML，不要解释。\n\n"
+        f"原文：\n{original_text}\n\n"
+        f"当前ruby HTML：\n{kakasi_ruby_html}"
+    )
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = resp.choices[0].message.content.strip()
+        return content or kakasi_ruby_html
+    except Exception:
+        return kakasi_ruby_html
+
+
+def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
+    prompt = (
+        "请将下面的日语文本转换为带ruby注音的HTML，要求：只输出HTML本身，"
+        "对需要注音的词使用 <ruby>漢字<rt>かな</rt></ruby>，对假名和标点原样输出。\n\n"
+        f"文本：\n{original_text}"
+    )
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = resp.choices[0].message.content.strip()
+        return content
+    except Exception:
+        return _kakasi_ruby(original_text)
+
+
+def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
+    mode = settings.FURIGANA_MODE.lower()
+    if mode == "kakasi":
+        return _kakasi_ruby(text)
+    if mode == "ai":
+        return _ai_ruby(text, model, client)
+    # hybrid
+    base_html = _kakasi_ruby(text)
+    return _ai_fix_ruby(text, base_html, model, client)
 
 
 def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = None) -> List[Dict]:

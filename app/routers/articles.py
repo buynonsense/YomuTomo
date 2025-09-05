@@ -51,11 +51,23 @@ async def process_text(
     header_api_key = request.headers.get('X-API-Key')
     header_base_url = request.headers.get('X-Base-URL')
     header_model = request.headers.get('X-Model')
+    header_furigana_mode = request.headers.get('X-Furigana-Mode')  # kakasi | hybrid | ai
     if header_model:
         final_model = header_model
     client = get_openai_client(header_api_key, header_base_url)
 
-    ruby_text = generate_ruby(text)
+    # 选择假名模式，优先头部
+    if header_furigana_mode:
+        # 临时覆盖进程配置（仅本次请求用）
+        from app.core import config as _cfg
+        prev = _cfg.settings.FURIGANA_MODE
+        _cfg.settings.FURIGANA_MODE = header_furigana_mode
+        try:
+            ruby_text = generate_ruby(text, final_model, client)
+        finally:
+            _cfg.settings.FURIGANA_MODE = prev
+    else:
+        ruby_text = generate_ruby(text, final_model, client)
     vocab = extract_vocabulary(text, final_model, client)
     translation = translate_to_chinese(text, final_model, client)
     title = generate_title(text, final_model, client)

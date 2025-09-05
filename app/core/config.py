@@ -16,6 +16,9 @@ class Settings:
     OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 
+    # 假名模式：kakasi | hybrid | ai
+    FURIGANA_MODE = os.getenv("FURIGANA_MODE", "hybrid")
+
 
 settings = Settings()
 
