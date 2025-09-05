@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YomuTomo - AI处理中...</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="alternate icon" href="/static/favicon.ico" />
+    <link rel="stylesheet" href="/static/css/new_style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav-bar">
+        <a href="/" class="nav-button">🏠 回到首页</a>
+      </nav>
+
+      <header class="page-header">
+        <h1>🤖 AI处理中...</h1>
+        <p>正在并发生成注音、词汇、翻译等内容，请稍候</p>
+      </header>
+
+      <main class="main-content">
+        <section class="card loading-card">
+          <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <h2>🚀 多线程AI处理中</h2>
+            <p>正在并发执行以下任务：</p>
+            <div class="loading-tasks">
+              <div class="task-item">
+                <span class="task-icon">📝</span>
+                <span class="task-text">生成注音标记</span>
+                <div class="task-progress">
+                  <div class="progress-bar"></div>
+                </div>
+              </div>
+              <div class="task-item">
+                <span class="task-icon">📚</span>
+                <span class="task-text">提取生词列表</span>
+                <div class="task-progress">
+                  <div class="progress-bar"></div>
+                </div>
+              </div>
+              <div class="task-item">
+                <span class="task-icon">🇨🇳</span>
+                <span class="task-text">生成中文翻译</span>
+                <div class="task-progress">
+                  <div class="progress-bar"></div>
+                </div>
+              </div>
+              <div class="task-item">
+                <span class="task-icon">🏷️</span>
+                <span class="task-text">生成文章标题</span>
+                <div class="task-progress">
+                  <div class="progress-bar"></div>
+                </div>
+              </div>
+              <div class="task-item">
+                <span class="task-icon">😊</span>
+                <span class="task-text">生成封面表情</span>
+                <div class="task-progress">
+                  <div class="progress-bar"></div>
+                </div>
+              </div>
+            </div>
+            <div class="loading-message">
+              <p>💡 提示：多线程并发处理，预计需要 10-300 秒</p>
+              <p>⚡ 质量优先，耐心等待</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      // 模拟进度条动画
+      document.addEventListener('DOMContentLoaded', function() {
+        const progressBars = document.querySelectorAll('.progress-bar');
+
+        progressBars.forEach((bar, index) => {
+          // 随机延迟开始动画
+          setTimeout(() => {
+            bar.style.width = '100%';
+          }, index * 500);
+        });
+
+        // 开始异步处理
+        startProcessing();
+      });
+
+      async function startProcessing() {
+        try {
+          // 获取表单数据（从sessionStorage或localStorage中获取）
+          const formData = new FormData();
+          const text = sessionStorage.getItem('processing_text');
+          const model = sessionStorage.getItem('processing_model');
+
+          if (!text) {
+            alert('没有找到要处理的文本，请重新提交');
+            window.location.href = '/';
+            return;
+          }
+
+          formData.append('text', text);
+          if (model) {
+            formData.append('model', model);
+          }
+
+          // 调用异步处理API
+          const response = await fetch('/process_text_async', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+
+          if (result.error) {
+            alert('处理失败: ' + result.error);
+            window.location.href = '/';
+            return;
+          }
+
+          // 处理成功，重定向到结果页面
+          if (result.redirect_url) {
+            window.location.href = result.redirect_url;
+          } else {
+            // 如果没有重定向URL，说明是未登录用户，直接显示结果
+            sessionStorage.setItem('processed_result', JSON.stringify(result));
+            window.location.href = '/reading_result';
+          }
+
+        } catch (error) {
+          console.error('处理失败:', error);
+          alert('处理过程中发生错误，请重试');
+          window.location.href = '/';
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1106,3 +1106,142 @@ rt {
     font-size: 20px;
   }
 }
+
+/* Loading 页面样式 */
+.loading-container {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.loading-spinner {
+  width: 80px;
+  height: 80px;
+  border: 6px solid var(--light-bg);
+  border-top: 6px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 30px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-tasks {
+  margin: 30px 0;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--light-bg);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.task-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(233, 30, 99, 0.1);
+}
+
+.task-icon {
+  font-size: 24px;
+  margin-right: 15px;
+  min-width: 30px;
+}
+
+.task-text {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.task-progress {
+  width: 120px;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-left: 15px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+  border-radius: 4px;
+  width: 0%;
+  transition: width 2s ease-in-out;
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.loading-message {
+  margin-top: 30px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(233, 30, 99, 0.1), rgba(240, 98, 146, 0.1));
+  border-radius: 15px;
+  border: 1px solid rgba(233, 30, 99, 0.2);
+}
+
+.loading-message p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loading-card {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* 移动端loading优化 */
+@media (max-width: 768px) {
+  .loading-container {
+    padding: 20px 15px;
+  }
+
+  .loading-spinner {
+    width: 60px;
+    height: 60px;
+    border-width: 4px;
+  }
+
+  .task-item {
+    padding: 12px;
+    margin-bottom: 15px;
+  }
+
+  .task-icon {
+    font-size: 20px;
+    margin-right: 10px;
+    min-width: 25px;
+  }
+
+  .task-text {
+    font-size: 14px;
+  }
+
+  .task-progress {
+    width: 80px;
+    margin-left: 10px;
+  }
+
+  .loading-message {
+    padding: 15px;
+    margin-top: 20px;
+  }
+
+  .loading-message p {
+    font-size: 13px;
+  }
+}

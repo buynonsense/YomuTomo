@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User, Article
-from app.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji
+from app.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content
 from app.core.config import settings
 
 router = APIRouter(prefix="", tags=["文章"])
@@ -41,8 +41,35 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("dashboard.html", {"request": request, "user": user, "articles": articles})
 
 
-@router.post("/process_text", response_class=HTMLResponse, summary="处理日语文本")
-async def process_text(
+@router.get("/loading", response_class=HTMLResponse, summary="显示处理中页面")
+async def show_loading(request: Request):
+    from fastapi.templating import Jinja2Templates
+    templates = Jinja2Templates(directory="templates")
+    return templates.TemplateResponse("loading.html", {"request": request})
+
+
+@router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")
+async def show_result(request: Request):
+    # 从sessionStorage获取处理结果
+    from fastapi.templating import Jinja2Templates
+    templates = Jinja2Templates(directory="templates")
+
+    # 这里需要从请求中获取数据，暂时返回一个占位符
+    return templates.TemplateResponse(
+        "reading.html",
+        {
+            "request": request,
+            "original": "处理结果将在这里显示",
+            "ruby_text": "<p>请刷新页面或重新提交</p>",
+            "vocab": [],
+            "translation": "处理结果将在这里显示",
+            "title": "处理结果"
+        }
+    )
+
+
+@router.post("/process_text_async", summary="异步处理日语文本")
+async def process_text_async(
     request: Request,
     text: str = Form(..., description="日语课文原文"),
     model: str = Form(None),
@@ -59,27 +86,30 @@ async def process_text(
     client = get_openai_client(header_api_key, header_base_url)
 
     # 选择假名模式，优先头部
-    if header_furigana_mode:
-        # 临时覆盖进程配置（仅本次请求用）
-        from app.core import config as _cfg
-        prev = _cfg.settings.FURIGANA_MODE
-        _cfg.settings.FURIGANA_MODE = header_furigana_mode
-        try:
-            ruby_text = generate_ruby(text, final_model, client)
-        finally:
-            _cfg.settings.FURIGANA_MODE = prev
-    else:
-        ruby_text = generate_ruby(text, final_model, client)
-    vocab = extract_vocabulary(text, final_model, client)
-    translation = translate_to_chinese(text, final_model, client)
-    title = generate_title(text, final_model, client)
+    try:
+        if header_furigana_mode:
+            # 临时覆盖进程配置（仅本次请求用）
+            from app.core import config as _cfg
+            prev = _cfg.settings.FURIGANA_MODE
+            _cfg.settings.FURIGANA_MODE = header_furigana_mode
+            try:
+                # 使用多线程并发生成所有内容
+                ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
+            finally:
+                _cfg.settings.FURIGANA_MODE = prev
+        else:
+            # 使用多线程并发生成所有内容
+            ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
+    except Exception as e:
+        # 返回错误信息
+        return {"error": str(e)}
 
     user = get_current_user(request, db)
     if user:
         article = Article(
             user_id=user.id,
             title=title,
-            emoji_cover=generate_emoji(text, final_model, client),
+            emoji_cover=emoji,  # 直接使用并发生成的结果
             original=text,
             ruby_html=ruby_text,
             translation=translation,
@@ -90,14 +120,15 @@ async def process_text(
         db.add(article)
         db.commit()
         db.refresh(article)
-        return RedirectResponse(url=f"/articles/{article.id}", status_code=303)
+        return {"redirect_url": f"/articles/{article.id}"}
 
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
-    return templates.TemplateResponse(
-        "reading.html",
-        {"request": request, "original": text, "ruby_text": ruby_text, "vocab": vocab, "translation": translation, "title": title}
-    )
+    # 返回处理结果
+    return {
+        "ruby_text": ruby_text,
+        "vocab": vocab,
+        "translation": translation,
+        "title": title
+    }
 
 
 @router.get("/articles/{article_id}", response_class=HTMLResponse, summary="查看文章详情")

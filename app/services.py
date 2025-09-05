@@ -3,8 +3,10 @@ import pykakasi
 import openai
 from datetime import datetime
 from passlib.context import CryptContext
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from app.core.config import settings
+import concurrent.futures
+import threading
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -182,6 +184,54 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
+
+
+def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[str, List[Dict], str, str, str]:
+    """
+    并发生成所有AI内容：注音、词汇、翻译、标题、emoji
+    返回：(ruby_text, vocab, translation, title, emoji)
+    """
+    def generate_ruby_task():
+        return generate_ruby(text, model, client)
+
+    def extract_vocab_task():
+        return extract_vocabulary(text, model, client)
+
+    def translate_task():
+        return translate_to_chinese(text, model, client)
+
+    def generate_title_task():
+        return generate_title(text, model, client)
+
+    def generate_emoji_task():
+        return generate_emoji(text, model, client)
+
+    # 使用ThreadPoolExecutor并发执行所有任务
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # 提交所有任务
+        ruby_future = executor.submit(generate_ruby_task)
+        vocab_future = executor.submit(extract_vocab_task)
+        translation_future = executor.submit(translate_task)
+        title_future = executor.submit(generate_title_task)
+        emoji_future = executor.submit(generate_emoji_task)
+
+        # 等待所有任务完成并获取结果
+        try:
+            ruby_text = ruby_future.result(timeout=300)  # 300秒超时
+            vocab = vocab_future.result(timeout=300)
+            translation = translation_future.result(timeout=300)
+            title = title_future.result(timeout=300)
+            emoji = emoji_future.result(timeout=300)
+
+            return ruby_text, vocab, translation, title, emoji
+
+        except concurrent.futures.TimeoutError:
+            # 如果超时，抛出异常让上层处理
+            raise Exception("AI生成超时：请求处理时间超过5分钟")
+
+        except Exception as e:
+            # 重新抛出异常，保持质量优先原则
+            raise Exception(f"AI生成失败: {str(e)}")
 
 
 def generate_emoji(text: str, model: str, client: openai.OpenAI | None = None) -> str:

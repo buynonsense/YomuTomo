@@ -40,11 +40,12 @@
 
         <section class="card input-card">
           <h2>📝 输入课文</h2>
-          <form action="/process_text" method="post">
+          <form id="text-form" action="/process_text" method="post">
             <div class="input-group">
               <textarea id="text" name="text" rows="8" required></textarea>
               <label for="text">日语课文</label>
             </div>
+            <input type="hidden" id="model" name="model" value="" />
             <button type="submit" class="btn-primary">🚀 开始练习</button>
           </form>
         </section>
@@ -82,6 +83,33 @@
         </div>
       </div>
     </div>
+    <script>
+      // 处理表单提交，显示loading页面
+      document.getElementById('text-form').addEventListener('submit', function(e) {
+        e.preventDefault(); // 阻止默认提交
+
+        const text = document.getElementById('text').value.trim();
+        if (!text) {
+          alert('请输入日语课文');
+          return;
+        }
+
+        // 保存数据到sessionStorage
+        sessionStorage.setItem('processing_text', text);
+        sessionStorage.setItem('processing_model', document.getElementById('model').value);
+
+        // 重定向到loading页面
+        window.location.href = '/loading';
+      });
+
+      // 从配置中获取模型设置
+      document.addEventListener('DOMContentLoaded', function() {
+        const config = JSON.parse(localStorage.getItem('ai_config') || '{}');
+        if (config.model) {
+          document.getElementById('model').value = config.model;
+        }
+      });
+    </script>
     <script src="/static/js/new_script.js"></script>
   </body>
 </html>
