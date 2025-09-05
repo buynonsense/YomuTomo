@@ -8,6 +8,11 @@
   </head>
   <body>
     <div class="container">
+      <style>
+        .pagination { margin-top:24px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+        .pagination-btn.disabled { opacity:.5; pointer-events:none; }
+        .pagination-info { color:#fff; font-size:14px; }
+      </style>
       <nav class="nav-bar">
         <a href="/" class="nav-button">🏠 首页</a>
         <form method="post" action="/logout" style="display: inline">
@@ -25,12 +30,12 @@
           <div class="article-grid">
             {% for a in articles %}
             <div class="article-bubble" data-article-id="{{ a.id }}" data-title="{{ a.title | replace('"',' ') | replace('\'',' ') }}">
-              <div class="bubble-main" onclick="openArticle({{ a.id }})" title="打开文章">
+              <div class="bubble-main" data-article-id="{{ a.id }}" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
                 <div class="bubble-meta">更新：{{ a.updated_at|string|slice(0,19) }}</div>
               </div>
-              <button class="bubble-menu-btn" onclick="showActionPanel(event, {{ a.id }})" aria-label="更多操作">⋯</button>
+              <button class="bubble-menu-btn" data-article-id="{{ a.id }}" aria-label="更多操作">⋯</button>
             </div>
             {% endfor %}
           </div>
@@ -38,6 +43,16 @@
           <p>还没有保存的文章。回到首页粘贴文本后开始生成吧。</p>
           {% endif %}
         </section>
+        {% if total_pages and total_pages > 1 %}
+        <nav class="pagination">
+          {% set base = '/dashboard?size=' ~ size ~ '&page=' %}
+          {% set prev_page = page-1 if page>1 else 1 %}
+          {% set next_page = page+1 if page<total_pages else total_pages %}
+          <a href="{{ base ~ prev_page }}" class="nav-button pagination-btn {% if page==1 %}disabled{% endif %}" style="padding:6px 14px;">上一页</a>
+          <span class="pagination-info">第 {{ page }} / {{ total_pages }} 页（共 {{ total_items }} 篇）</span>
+          <a href="{{ base ~ next_page }}" class="nav-button pagination-btn {% if page==total_pages %}disabled{% endif %}" style="padding:6px 14px;">下一页</a>
+        </nav>
+        {% endif %}
       </main>
     </div>
     <div id="action-panel-overlay" class="action-overlay" style="display:none;">
@@ -58,9 +73,8 @@
     </div>
     <script>
       function openArticle(id){ window.location.href = '/articles/' + id }
-      function showActionPanel(e,id){
-        e.stopPropagation();
-        const bubble = e.currentTarget.closest('.article-bubble');
+      function showActionPanelFromBubble(bubble){
+        const id = bubble.dataset.articleId;
         const emoji = bubble.querySelector('.bubble-emoji').textContent.trim() || '📝';
         const title = bubble.dataset.title || '标题';
         const overlay = document.getElementById('action-panel-overlay');
@@ -81,7 +95,20 @@
       }
       document.addEventListener('click', (e)=>{
         const overlay = document.getElementById('action-panel-overlay');
-        if(overlay.style.display==='flex' && !e.target.closest('.action-panel') && !e.target.closest('.bubble-menu-btn')){
+        const menuBtn = e.target.closest('.bubble-menu-btn');
+        const bubbleMain = e.target.closest('.bubble-main');
+        if(menuBtn){
+          e.stopPropagation();
+          const bubble = menuBtn.closest('.article-bubble');
+          showActionPanelFromBubble(bubble);
+          return;
+        }
+        if(bubbleMain){
+          const id = bubbleMain.dataset.articleId;
+          if(id) openArticle(id);
+          return;
+        }
+        if(overlay.style.display==='flex' && !e.target.closest('.action-panel')){
           closeActionPanel();
         }
       });

@@ -1,8 +1,9 @@
 from datetime import datetime
 import json
-from fastapi import APIRouter, Request, Form, Depends
+from fastapi import APIRouter, Request, Form, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.db import get_db
 from app.models import User, Article
 from app.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content
@@ -26,19 +27,44 @@ def require_login(request: Request, db: Session) -> User | None:
 
 
 @router.get("/dashboard", response_class=HTMLResponse, summary="我的文章仪表盘")
-async def dashboard(request: Request, db: Session = Depends(get_db)):
+async def dashboard(
+    request: Request,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    size: int = Query(24, ge=1, le=100, description="每页条目数")
+):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
+    # 统计总数
+    total_items = db.query(func.count(Article.id)).filter(Article.user_id == user.id).scalar() or 0
+    # 计算分页边界
+    total_pages = max((total_items + size - 1) // size, 1)
+    if page > total_pages:
+        page = total_pages  # 超出范围回退到最后一页
+    offset = (page - 1) * size
     articles = (
         db.query(Article)
         .filter(Article.user_id == user.id)
         .order_by(Article.updated_at.desc())
+        .offset(offset)
+        .limit(size)
         .all()
     )
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user, "articles": articles})
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "articles": articles,
+            "page": page,
+            "size": size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        },
+    )
 
 
 @router.get("/loading", response_class=HTMLResponse, summary="显示处理中页面")
