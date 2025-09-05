@@ -26,27 +26,78 @@
             {% for a in articles %}
             <li
               style="
-                margin: 8px 0;
                 display: flex;
-                justify-content: space-between;
                 align-items: center;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid #eee;
               "
             >
-              <span>
-                <a href="/articles/{{ a.id }}" class="nav-button"
-                  >{{ a.title }}</a
-                >
-                <small style="margin-left: 8px; color: #888"
-                  >更新：{{ a.updated_at }}</small
-                >
-              </span>
-              <form
-                method="post"
-                action="/articles/{{ a.id }}/delete"
-                onsubmit="return confirm('确定删除该文章吗？');"
+              <a
+                href="/articles/{{ a.id }}"
+                style="
+                  display: flex;
+                  align-items: center;
+                  text-decoration: none;
+                  color: inherit;
+                  flex: 1;
+                "
               >
-                <button type="submit" class="btn-secondary">删除</button>
-              </form>
+                <span style="font-size: 24px; width: 36px; text-align: center"
+                  >{{ a.emoji_cover or "📝" }}</span
+                >
+                <div style="margin-left: 12px">
+                  <div style="font-weight: 600">{{ a.title }}</div>
+                  <div style="font-size: 12px; color: #888">
+                    创建：{{ a.created_at }}
+                  </div>
+                </div>
+              </a>
+              <div class="dropdown" style="position: relative">
+                <button class="btn-secondary" onclick="toggleMenu(this)">
+                  ⋯
+                </button>
+                <div
+                  class="menu"
+                  style="
+                    display: none;
+                    position: absolute;
+                    right: 0;
+                    top: 32px;
+                    background: #fff;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                  "
+                >
+                  <form
+                    method="post"
+                    action="/articles/{{ a.id }}/rename"
+                    style="padding: 8px 12px; display: flex; gap: 6px"
+                  >
+                    <input
+                      name="title"
+                      placeholder="新标题"
+                      style="width: 140px"
+                    />
+                    <button type="submit" class="btn-primary">保存</button>
+                  </form>
+                  <form
+                    method="post"
+                    action="/articles/{{ a.id }}/delete"
+                    onsubmit="return confirm('确定删除该文章吗？');"
+                    style="padding: 8px 12px"
+                  >
+                    <button
+                      type="submit"
+                      class="btn-secondary"
+                      style="width: 100%; text-align: left"
+                    >
+                      删除
+                    </button>
+                  </form>
+                </div>
+              </div>
             </li>
             {% endfor %}
           </ul>
@@ -56,5 +107,22 @@
         </section>
       </main>
     </div>
+    <script>
+      function toggleMenu(btn) {
+        const menu = btn.parentElement.querySelector(".menu");
+        const visible = menu.style.display === "block";
+        document
+          .querySelectorAll(".menu")
+          .forEach((m) => (m.style.display = "none"));
+        menu.style.display = visible ? "none" : "block";
+      }
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest(".dropdown")) {
+          document
+            .querySelectorAll(".menu")
+            .forEach((m) => (m.style.display = "none"));
+        }
+      });
+    </script>
   </body>
 </html>

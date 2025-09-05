@@ -21,6 +21,7 @@ class Article(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
+    emoji_cover = Column(String(8), nullable=True)
     original = Column(Text, nullable=False)
     ruby_html = Column(Text, nullable=False)
     translation = Column(Text, nullable=False)

@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User, Article
-from app.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client
+from app.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji
 from app.core.config import settings
 
 router = APIRouter(prefix="", tags=["文章"])
@@ -77,6 +77,7 @@ async def process_text(
         article = Article(
             user_id=user.id,
             title=title,
+            emoji_cover=generate_emoji(text, final_model, client),
             original=text,
             ruby_html=ruby_text,
             translation=translation,
@@ -127,6 +128,16 @@ async def delete_article(article_id: int, request: Request, db: Session = Depend
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if article:
         db.delete(article)
+        db.commit()
+    return RedirectResponse(url="/dashboard", status_code=303)
+
+
+@router.post("/articles/{article_id}/rename", summary="修改文章标题")
+async def rename_article(article_id: int, request: Request, title: str = Form(...), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    if article and title.strip():
+        article.title = title.strip()
         db.commit()
     return RedirectResponse(url="/dashboard", status_code=303)
 

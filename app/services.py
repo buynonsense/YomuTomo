@@ -184,3 +184,22 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
+def generate_emoji(text: str, model: str, client: openai.OpenAI | None = None) -> str:
+    prompt = (
+        "请从下面文本的主题中，选择一个最能代表它的 emoji。只输出一个 emoji 字符，不要任何其他内容。\n\n"
+        f"文本：\n{text[:400]}"
+    )
+    try:
+        resp = (client or _default_client).chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        emoji = resp.choices[0].message.content.strip()
+        # 简单清洗：限制长度，避免返回描述文字
+        if len(emoji) > 4:
+            emoji = emoji.split()[0]
+        return emoji
+    except Exception:
+        return "📝"
+
+
