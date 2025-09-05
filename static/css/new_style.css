@@ -21,6 +21,99 @@
   padding: 0;
   box-sizing: border-box;
 }
+  /* ===== 文章气泡矩阵布局 ===== */
+  .article-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .article-bubble {
+    position: relative;
+    background: radial-gradient(circle at 30% 30%, var(--card-bg-hover) 0%, var(--card-bg) 70%);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 14px 14px 46px 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .25s ease, border-color .25s ease;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(4px);
+  }
+  .article-bubble:hover {
+    transform: translateY(-4px);
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 20px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  }
+  .bubble-emoji { font-size: 34px; line-height: 1; margin-bottom: 8px; }
+  .bubble-title { font-weight: 600; font-size: 15px; line-height: 1.3; max-height: 2.6em; overflow: hidden; }
+  .bubble-meta { margin-top: auto; font-size: 11px; opacity: .55; }
+  .bubble-menu-btn {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+  }
+  .bubble-menu-btn:hover { background: var(--card-bg-hover); border-color: var(--primary-color); }
+
+  /* ===== Action Panel 蒙层 ===== */
+  .action-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent; /* 取消遮罩 */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px;
+    z-index: 1200;
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  .action-overlay.show { opacity: 1; }
+  /* TODO[TechDebt]: 现已移除遮罩与噪点，如需可选开关，后续加 .overlay-backdrop 修饰类控制 */
+  .action-panel {
+    background: #ffffff; /* 纯白不透明背景 */
+    border: 1px solid var(--border-color);
+    width: 360px;
+    max-width: 100%;
+    border-radius: 20px;
+    padding: 18px 20px 24px 20px;
+    box-shadow: 0 14px 38px -8px rgba(0,0,0,.28), 0 6px 16px -3px rgba(0,0,0,.18);
+    display: flex;
+    flex-direction: column;
+    animation: panelPop .35s cubic-bezier(.3,1.4,.4,1);
+  }
+  @keyframes panelPop {0%{transform:translateY(18px) scale(.96); opacity:0;}100%{transform:translateY(0) scale(1); opacity:1;}}
+  .action-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .action-header #ap-emoji { font-size: 30px; }
+  .ap-title { font-weight: 600; font-size: 16px; flex: 1; line-height: 1.2; }
+  .ap-close { background: none; border: none; font-size: 20px; cursor: pointer; line-height: 1; padding: 4px 8px; }
+  .ap-close:hover { color: var(--primary-color); }
+  .ap-row { display: flex; gap: 10px; margin-bottom: 14px; width:100%; }
+  .ap-row input[type="text"] { flex:1; padding:10px 12px; border-radius: 10px; border:1px solid var(--border-color); background: var(--input-bg); }
+  .ap-row input[type="text"]:focus { outline: none; border-color: var(--primary-color); box-shadow:0 0 0 3px rgba(64,128,255,.15); }
+  .btn-danger { background: #d9534f; color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; transition: background .2s; }
+  .btn-danger:hover { background:#c64540; }
+
+  @media (max-width:640px){
+    .article-grid { grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap:12px; }
+    .article-bubble { padding:12px 12px 44px 12px; min-height:140px; }
+    .bubble-emoji { font-size:30px; }
+    .action-panel { width: 92%; padding:16px 16px 22px 16px; }
+  }
+
+  /* TODO[TechDebt]: 样式直接追加到主CSS - 暂缺原子化拆分 - 后续可拆为 dashboard.css （当公共组件体系建立后） */
 
 body {
   font-family: "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic",

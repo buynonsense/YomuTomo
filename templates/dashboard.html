@@ -20,109 +20,72 @@
       </header>
       <main class="main-content">
         <section class="card">
-          <h2>已保存</h2>
+          <h2 style="margin-bottom:16px;">已保存</h2>
           {% if articles and articles|length > 0 %}
-          <ul>
+          <div class="article-grid">
             {% for a in articles %}
-            <li
-              style="
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 10px 0;
-                border-bottom: 1px solid #eee;
-              "
-            >
-              <a
-                href="/articles/{{ a.id }}"
-                style="
-                  display: flex;
-                  align-items: center;
-                  text-decoration: none;
-                  color: inherit;
-                  flex: 1;
-                "
-              >
-                <span style="font-size: 24px; width: 36px; text-align: center"
-                  >{{ a.emoji_cover or "📝" }}</span
-                >
-                <div style="margin-left: 12px">
-                  <div style="font-weight: 600">{{ a.title }}</div>
-                  <div style="font-size: 12px; color: #888">
-                    创建：{{ a.created_at }}
-                  </div>
-                </div>
-              </a>
-              <div class="dropdown" style="position: relative">
-                <button class="btn-secondary" onclick="toggleMenu(this)">
-                  ⋯
-                </button>
-                <div
-                  class="menu"
-                  style="
-                    display: none;
-                    position: absolute;
-                    right: 0;
-                    top: 32px;
-                    background: #fff;
-                    border: 1px solid #ddd;
-                    border-radius: 6px;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-                  "
-                >
-                  <form
-                    method="post"
-                    action="/articles/{{ a.id }}/rename"
-                    style="padding: 8px 12px; display: flex; gap: 6px"
-                  >
-                    <input
-                      name="title"
-                      placeholder="新标题"
-                      style="width: 140px"
-                    />
-                    <button type="submit" class="btn-primary">保存</button>
-                  </form>
-                  <form
-                    method="post"
-                    action="/articles/{{ a.id }}/delete"
-                    onsubmit="return confirm('确定删除该文章吗？');"
-                    style="padding: 8px 12px"
-                  >
-                    <button
-                      type="submit"
-                      class="btn-secondary"
-                      style="width: 100%; text-align: left"
-                    >
-                      删除
-                    </button>
-                  </form>
-                </div>
+            <div class="article-bubble" data-article-id="{{ a.id }}" data-title="{{ a.title | replace('"',' ') | replace('\'',' ') }}">
+              <div class="bubble-main" onclick="openArticle({{ a.id }})" title="打开文章">
+                <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
+                <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
+                <div class="bubble-meta">更新：{{ a.updated_at }}</div>
               </div>
-            </li>
+              <button class="bubble-menu-btn" onclick="showActionPanel(event, {{ a.id }})" aria-label="更多操作">⋯</button>
+            </div>
             {% endfor %}
-          </ul>
+          </div>
           {% else %}
           <p>还没有保存的文章。回到首页粘贴文本后开始生成吧。</p>
           {% endif %}
         </section>
       </main>
     </div>
+    <div id="action-panel-overlay" class="action-overlay" style="display:none;">
+      <div class="action-panel">
+        <div class="action-header">
+          <span id="ap-emoji">📝</span>
+          <span id="ap-title" class="ap-title">标题</span>
+          <button class="ap-close" onclick="closeActionPanel()">✕</button>
+        </div>
+        <form id="rename-form" method="post" class="ap-row">
+          <input type="text" name="title" id="ap-input" placeholder="新标题" />
+          <button type="submit" class="btn-primary" style="white-space:nowrap;">保存</button>
+        </form>
+        <form id="delete-form" method="post" onsubmit="return confirm('确定删除该文章吗？');" class="ap-row">
+          <button type="submit" class="btn-danger" style="width:100%;">删除文章</button>
+        </form>
+      </div>
+    </div>
     <script>
-      function toggleMenu(btn) {
-        const menu = btn.parentElement.querySelector(".menu");
-        const visible = menu.style.display === "block";
-        document
-          .querySelectorAll(".menu")
-          .forEach((m) => (m.style.display = "none"));
-        menu.style.display = visible ? "none" : "block";
+      function openArticle(id){ window.location.href = '/articles/' + id }
+      function showActionPanel(e,id){
+        e.stopPropagation();
+        const bubble = e.currentTarget.closest('.article-bubble');
+        const emoji = bubble.querySelector('.bubble-emoji').textContent.trim() || '📝';
+        const title = bubble.dataset.title || '标题';
+        const overlay = document.getElementById('action-panel-overlay');
+        document.getElementById('ap-emoji').textContent = emoji;
+        document.getElementById('ap-title').textContent = title;
+        const renameForm = document.getElementById('rename-form');
+        const deleteForm = document.getElementById('delete-form');
+        renameForm.action = '/articles/' + id + '/rename';
+        deleteForm.action = '/articles/' + id + '/delete';
+        document.getElementById('ap-input').value = title;
+        overlay.style.display='flex';
+        setTimeout(()=>overlay.classList.add('show'),10);
       }
-      document.addEventListener("click", function (e) {
-        if (!e.target.closest(".dropdown")) {
-          document
-            .querySelectorAll(".menu")
-            .forEach((m) => (m.style.display = "none"));
+      function closeActionPanel(){
+        const overlay = document.getElementById('action-panel-overlay');
+        overlay.classList.remove('show');
+        setTimeout(()=>overlay.style.display='none',200);
+      }
+      document.addEventListener('click', (e)=>{
+        const overlay = document.getElementById('action-panel-overlay');
+        if(overlay.style.display==='flex' && !e.target.closest('.action-panel') && !e.target.closest('.bubble-menu-btn')){
+          closeActionPanel();
         }
       });
+      document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeActionPanel(); });
     </script>
   </body>
 </html>
