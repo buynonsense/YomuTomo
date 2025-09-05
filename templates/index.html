@@ -102,11 +102,15 @@
         window.location.href = '/loading';
       });
 
-      // 从配置中获取模型设置
+      // 从配置中获取模型设置（统一使用 aiConfig 键）
       document.addEventListener('DOMContentLoaded', function() {
-        const config = JSON.parse(localStorage.getItem('ai_config') || '{}');
-        if (config.model) {
-          document.getElementById('model').value = config.model;
+        let config = {};
+        try {
+          config = JSON.parse(localStorage.getItem('aiConfig') || '{}');
+        } catch (e) {}
+        if (config && config.model) {
+          const modelInput = document.getElementById('model');
+          if (modelInput) modelInput.value = config.model;
         }
       });
     </script>

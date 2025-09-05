@@ -48,6 +48,7 @@ def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: 
         f"当前ruby HTML：\n{kakasi_ruby_html}"
     )
     try:
+        print(f"[AI] CALL _ai_fix_ruby model={model} len(text)={len(original_text)}")
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -66,6 +67,7 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
         f"文本：\n{original_text}"
     )
     try:
+        print(f"[AI] CALL _ai_ruby model={model} len(text)={len(original_text)}")
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -109,6 +111,7 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = Non
 
 文本：{text}"""
     try:
+        print(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
         response = (client or _default_client).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -138,6 +141,7 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI | None = N
 
 请直接返回中文翻译，不要添加其他说明。"""
     try:
+        print(f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}")
         response = (client or _default_client).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -160,6 +164,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI | None = None) -
 
 日语原文（截断前800字符）：\n{text[:800]}\n\n请直接输出标题："""
     try:
+        print(f"[AI] CALL generate_title model={model} len(text)={len(text)}")
         response = (client or _default_client).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -251,6 +256,7 @@ def generate_emoji(text: str, model: str, client: openai.OpenAI | None = None) -
         f"文本：\n{text[:400]}"
     )
     try:
+        print(f"[AI] CALL generate_emoji model={model} len(text)={len(text)}")
         resp = (client or _default_client).chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],

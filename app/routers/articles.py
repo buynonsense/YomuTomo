@@ -84,6 +84,7 @@ async def process_text_async(
     if header_model:
         final_model = header_model
     client = get_openai_client(header_api_key, header_base_url)
+    print(f"[TRACE] process_text_async model={final_model} header_api_key={'yes' if header_api_key else 'no'} base_url={header_base_url or 'env'} furigana={header_furigana_mode or settings.FURIGANA_MODE}")
 
     # 选择假名模式，优先头部
     try:

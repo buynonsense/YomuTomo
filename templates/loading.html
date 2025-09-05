@@ -106,8 +106,18 @@
           }
 
           // 调用异步处理API
+          // 从 localStorage 取配置（若存在则通过请求头覆盖）
+          let aiCfg = {};
+          try { aiCfg = JSON.parse(localStorage.getItem('aiConfig') || '{}'); } catch(e) {}
+          const headers = {};
+          if (aiCfg.apiKey) headers['X-API-Key'] = aiCfg.apiKey;
+          if (aiCfg.baseUrl) headers['X-Base-URL'] = aiCfg.baseUrl;
+          if (aiCfg.model) headers['X-Model'] = aiCfg.model;
+          if (aiCfg.furiganaMode) headers['X-Furigana-Mode'] = aiCfg.furiganaMode;
+
           const response = await fetch('/process_text_async', {
             method: 'POST',
+            headers: headers,
             body: formData
           });
 
