@@ -1100,3 +1100,68 @@ rt {
     margin-bottom: 8px;
   }
 }
+
+/* 回到顶部按钮 */
+.back-to-top-btn {
+  position: fixed !important;
+  bottom: 30px !important;
+  right: 30px !important;
+  left: auto !important;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  backdrop-filter: blur(10px);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(233, 30, 99, 0.3);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(20px) scale(0.8);
+  pointer-events: none;
+}
+
+.back-to-top-btn svg {
+  width: 22px;
+  height: 22px;
+  transition: transform 0.3s ease;
+}
+
+.back-to-top-btn:hover svg {
+  transform: translateY(-2px);
+}
+
+.back-to-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.back-to-top-btn:hover {
+  background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 12px 32px rgba(233, 30, 99, 0.4);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.back-to-top-btn:active {
+  transform: translateY(-2px) scale(1.02);
+}
+
+/* 移动端调整 */
+@media (max-width: 768px) {
+  .back-to-top-btn {
+    bottom: 20px !important;
+    right: 20px !important;
+    left: auto !important;
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+}

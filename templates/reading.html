@@ -8,10 +8,17 @@
     <link rel="alternate icon" href="/static/favicon.ico" />
     <link rel="stylesheet" href="/static/css/new_style.css" />
   <!-- PDF 依赖 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="/static/js/html2canvas.min.js"></script>
+  <script src="/static/js/jspdf.umd.min.js"></script>
   </head>
   <body>
+    <!-- 回到顶部按钮 -->
+    <button id="back-to-top" class="back-to-top-btn" title="回到顶部">
+      <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L13.5 7H19L14.5 10.5L16 15.5L12 12.5L8 15.5L9.5 10.5L5 7H10.5L12 2Z" fill="currentColor"/>
+        <path d="M10 19L12 16L14 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
     <div class="container">
       <nav class="nav-bar">
         <a href="/" class="nav-button">🏠 回到首页</a>
@@ -74,13 +81,6 @@
         </section>
       </main>
     </div>
-
-    <!-- 回到顶部按钮 -->
-    <button id="back-to-top" class="back-to-top-btn">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 19V5M5 12L12 5L19 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
 
     <script src="/static/js/new_script.js"></script>
   </body>
