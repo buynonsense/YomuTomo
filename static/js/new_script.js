@@ -1,4 +1,22 @@
 // Form validation and modal management
+function getStoredConfig() {
+    const stored = localStorage.getItem('aiConfig');
+    return stored ? JSON.parse(stored) : {};
+}
+
+function testAIConfig(config) {
+    const formData = new FormData();
+    formData.append('api_key', config.apiKey);
+    formData.append('base_url', config.baseUrl);
+    formData.append('model', config.model);
+
+    return fetch('/test_ai_config', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json());
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     // 仅拦截处理课文的表单，避免影响登录/退出/重命名/删除等
     const form = document.querySelector('form[action="/process_text"]');
@@ -138,24 +156,43 @@ function saveConfig() {
 
     localStorage.setItem('aiConfig', JSON.stringify(config));
 
-    // Update status
-    updateConfigStatus();
+    // Show loading state
+    const saveBtn = document.getElementById('save-config');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '⏳ 测试中...';
+    saveBtn.disabled = true;
 
-    // Show success feedback
-    showSaveSuccess();
+    // Test AI configuration
+    testAIConfig(config).then(result => {
+        if (result.success) {
+            // Update status to configured
+            updateConfigStatus(true, config.model);
+            showSaveSuccess();
+        } else {
+            // Update status to error
+            updateConfigStatus(false, result.error);
+            showSaveError(result.error);
+        }
+    }).catch(error => {
+        console.error('AI config test failed:', error);
+        updateConfigStatus(false, '测试失败');
+        showSaveError('测试失败，请检查配置');
+    }).finally(() => {
+        // Hide loading state after a short delay to show result
+        setTimeout(() => {
+            saveBtn.innerHTML = originalText;
+            saveBtn.classList.remove('success-animation', 'error-animation');
+            saveBtn.disabled = false;
+        }, 1500);
+    });
 
-    // Close modal
+    // Close modal after a delay
     setTimeout(() => {
         closeConfigModal();
     }, 1500);
 }
 
-function getStoredConfig() {
-    const stored = localStorage.getItem('aiConfig');
-    return stored ? JSON.parse(stored) : {};
-}
-
-function updateConfigStatus() {
+function updateConfigStatus(tested = false, modelOrError = '') {
     const config = getStoredConfig();
     const statusDiv = document.getElementById('config-status');
     const statusIcon = document.getElementById('status-icon');
@@ -163,11 +200,22 @@ function updateConfigStatus() {
 
     if (statusDiv && statusIcon && statusText) {
         if (config.apiKey) {
-            statusDiv.classList.add('configured');
-            statusIcon.textContent = '✅';
-            statusText.textContent = `已配置 (${config.model})`;
+            if (tested === true) {
+                statusDiv.classList.add('configured');
+                statusIcon.textContent = '✅';
+                statusText.textContent = `已配置 (${modelOrError})`;
+            } else if (tested === false) {
+                statusDiv.classList.add('error');
+                statusIcon.textContent = '❓';
+                statusText.textContent = `配置有问题: ${modelOrError}`;
+            } else {
+                // Not tested yet, show as configured but with question mark
+                statusDiv.classList.add('configured');
+                statusIcon.textContent = '❓';
+                statusText.textContent = `已保存 (${config.model}) - 未测试`;
+            }
         } else {
-            statusDiv.classList.remove('configured');
+            statusDiv.classList.remove('configured', 'error');
             statusIcon.textContent = '❌';
             statusText.textContent = '未配置';
         }
@@ -177,16 +225,18 @@ function updateConfigStatus() {
 function showSaveSuccess() {
     const saveBtn = document.getElementById('save-config');
     if (saveBtn) {
-        const originalText = saveBtn.innerHTML;
         saveBtn.innerHTML = '✅ 保存成功！';
         saveBtn.classList.add('success-animation');
-        saveBtn.disabled = true;
+        // Don't disable button here since it's already handled by loading state
+    }
+}
 
-        setTimeout(() => {
-            saveBtn.innerHTML = originalText;
-            saveBtn.classList.remove('success-animation');
-            saveBtn.disabled = false;
-        }, 1500);
+function showSaveError(error) {
+    const saveBtn = document.getElementById('save-config');
+    if (saveBtn) {
+        saveBtn.innerHTML = '❌ 保存失败';
+        saveBtn.classList.add('error-animation');
+        // Don't disable button here since it's already handled by loading state
     }
 }
 

@@ -918,6 +918,15 @@ rt {
   border-color: var(--success-color);
 }
 
+.config-status.error {
+  background: linear-gradient(135deg, #ffebee, #ffcdd2);
+  border-color: var(--danger-color);
+}
+
+.config-status.error #status-icon {
+  color: var(--danger-color);
+}
+
 .config-status.configured #status-icon {
   color: var(--success-color);
 }
@@ -1072,6 +1081,22 @@ rt {
 
 .success-animation {
   animation: successPulse 0.6s ease;
+}
+
+.error-animation {
+  animation: errorShake 0.6s ease;
+}
+
+@keyframes errorShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
 }
 
 /* 超小屏幕优化 (375px以下) */

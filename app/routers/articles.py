@@ -208,3 +208,31 @@ async def rename_article(article_id: int, request: Request, title: str = Form(..
     return RedirectResponse(url="/dashboard", status_code=303)
 
 
+@router.post("/test_ai_config", summary="测试 AI 配置是否有效")
+async def test_ai_config(
+    request: Request,
+    api_key: str = Form(None),
+    base_url: str = Form(None),
+    model: str = Form(None),
+):
+    # 从请求头获取配置（优先级：请求头 > 表单 > 环境变量）
+    final_api_key = api_key or request.headers.get('X-API-Key') or settings.OPENAI_API_KEY
+    final_base_url = base_url or request.headers.get('X-Base-URL') or settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
+    final_model = model or request.headers.get('X-Model') or settings.OPENAI_MODEL or "gpt-5-mini"
+    
+    if not final_api_key:
+        return {"success": False, "error": "API Key 未提供"}
+    
+    try:
+        client = get_openai_client(final_api_key, final_base_url)
+        # 发送一个简单的测试请求
+        response = client.chat.completions.create(
+            model=final_model,
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=5
+        )
+        return {"success": True, "model": final_model}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
