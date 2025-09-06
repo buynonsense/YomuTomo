@@ -123,7 +123,7 @@
 
         const text = document.getElementById('text').value.trim();
         if (!text) {
-          alert('请输入日语课文');
+          showToast('请输入日语课文', 'warning');
           return;
         }
 
@@ -150,36 +150,36 @@
         const crawlBtn = document.getElementById('crawl-news-btn');
         if (crawlBtn) {
           crawlBtn.addEventListener('click', async function() {
-            if (confirm('确定要爬取最新的NHK新闻吗？系统将在后台处理，您可以关闭浏览器。')) {
-              crawlBtn.disabled = true;
-              crawlBtn.textContent = '⏳ 启动中...';
-              
-              try {
-                const response = await fetch('/crawl_news', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.success) {
-                  alert('✅ 爬虫任务已启动！系统将在后台处理新闻，您可以关闭浏览器。处理完成后，请查看"我的文章"页面。');
-                  crawlBtn.textContent = '✅ 已启动';
-                  // 开始轮询任务状态
-                  pollCrawlStatus();
-                } else {
-                  alert('启动失败：' + (result.message || '未知错误'));
-                  crawlBtn.disabled = false;
-                  crawlBtn.textContent = '📰 爬取新闻';
+            // 显示确认消息并自动继续
+            showToast('正在启动NHK新闻爬取任务...', 'info', 2000);
+            crawlBtn.disabled = true;
+            crawlBtn.textContent = '⏳ 启动中...';
+            
+            try {
+              const response = await fetch('/crawl_news', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
                 }
-              } catch (error) {
-                alert('网络错误，请稍后重试');
-                console.error('Crawl error:', error);
+              });
+              
+              const result = await response.json();
+              
+              if (response.ok && result.success) {
+                showToast('爬虫任务已启动！系统将在后台处理新闻，您可以关闭浏览器。处理完成后，请查看"我的文章"页面。', 'success');
+                crawlBtn.textContent = '✅ 已启动';
+                // 开始轮询任务状态
+                pollCrawlStatus();
+              } else {
+                showToast('启动失败：' + (result.message || '未知错误'), 'error');
                 crawlBtn.disabled = false;
                 crawlBtn.textContent = '📰 爬取新闻';
               }
+            } catch (error) {
+              showToast('网络错误，请稍后重试', 'error');
+              console.error('Crawl error:', error);
+              crawlBtn.disabled = false;
+              crawlBtn.textContent = '📰 爬取新闻';
             }
           });
         }
@@ -193,11 +193,12 @@
               
               if (status.status === 'completed') {
                 clearInterval(statusInterval);
-                alert('🎉 新闻爬取完成！请查看"我的文章"页面。');
-                window.location.href = '/dashboard';
+                showToast('新闻爬取完成！请查看"我的文章"页面。', 'success');
+                crawlBtn.disabled = false;
+                crawlBtn.textContent = '📰 爬取新闻';
               } else if (status.status === 'failed') {
                 clearInterval(statusInterval);
-                alert('❌ 爬取任务失败，请稍后重试');
+                showToast('爬取任务失败，请稍后重试', 'error');
                 crawlBtn.disabled = false;
                 crawlBtn.textContent = '📰 爬取新闻';
               } else if (status.status === 'processing') {
@@ -272,13 +273,13 @@
               const result = await response.json();
               
               if (response.ok) {
-                alert('设置保存成功！');
+                showToast('设置保存成功！', 'success');
                 settingsModal.style.display = 'none';
               } else {
-                alert('保存失败：' + (result.error || '未知错误'));
+                showToast('保存失败：' + (result.error || '未知错误'), 'error');
               }
             } catch (error) {
-              alert('网络错误，请稍后重试');
+              showToast('网络错误，请稍后重试', 'error');
               console.error('Save settings error:', error);
             }
           });

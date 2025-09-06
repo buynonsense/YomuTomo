@@ -95,7 +95,7 @@
           const model = sessionStorage.getItem('processing_model');
 
           if (!text) {
-            alert('没有找到要处理的文本，请重新提交');
+            showToast('没有找到要处理的文本，请重新提交', 'warning');
             window.location.href = '/';
             return;
           }
@@ -128,7 +128,7 @@
           const result = await response.json();
 
           if (result.error) {
-            alert('处理失败: ' + result.error);
+            showToast('处理失败: ' + result.error, 'error');
             window.location.href = '/';
             return;
           }
@@ -144,7 +144,7 @@
 
         } catch (error) {
           console.error('处理失败:', error);
-          alert('处理过程中发生错误，请重试');
+          showToast('处理过程中发生错误，请重试', 'error');
           window.location.href = '/';
         }
       }

@@ -1,4 +1,56 @@
 // Form validation and modal management
+
+// 消息通知功能
+function showToast(message, type = 'info', duration = 4000) {
+    // 创建toast容器（如果不存在）
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    // 创建toast元素
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    // 根据类型设置图标
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    else if (type === 'error') icon = '❌';
+    else if (type === 'warning') icon = '⚠️';
+    
+    toast.innerHTML = `<span class="toast-icon">${icon}</span>${message}`;
+    
+    // 添加到容器
+    container.appendChild(toast);
+    
+    // 触发显示动画
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    // 点击关闭
+    toast.addEventListener('click', () => {
+        toast.classList.add('fade-out');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 400);
+    });
+    
+    // 自动关闭
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 400);
+        }
+    }, duration);
+}
+
 function getStoredConfig() {
     const stored = localStorage.getItem('aiConfig');
     return stored ? JSON.parse(stored) : {};
@@ -185,7 +237,7 @@ function saveConfig() {
     const model = document.getElementById('modal-model').value;
 
     if (!apiKey) {
-        alert('请输入API Key');
+        showToast('请输入API Key', 'warning');
         return;
     }
 
@@ -720,7 +772,7 @@ async function exportToPDF() {
         pdf.save(filename);
     } catch (err) {
         console.error('PDF导出失败', err);
-        alert('PDF导出失败: ' + err.message);
+        showToast('PDF导出失败: ' + err.message, 'error');
     } finally {
         btn.innerHTML = old; btn.disabled = false;
         const tmp = document.getElementById('__pdf_tmp_wrapper'); if (tmp) tmp.remove();

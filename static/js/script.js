@@ -1,7 +1,7 @@
 document.querySelector('form').addEventListener('submit', function (e) {
     const apiKey = document.getElementById('api-key').value;
     if (!apiKey) {
-        alert('请输入OpenAI API Key');
+        showToast('请输入OpenAI API Key', 'warning');
         e.preventDefault();
         return;
     }
