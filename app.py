@@ -11,6 +11,10 @@ import os
 import json
 from datetime import datetime
 from typing import Optional
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 """兼容入口
 
 保留：旧部署脚本可能仍引用 `app:app`。

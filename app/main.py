@@ -1,8 +1,12 @@
 from fastapi import FastAPI
 import os, time, logging
+from dotenv import load_dotenv
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+
+# 加载环境变量
+load_dotenv()
 from app.core.config import settings
 from app.db import engine, Base
 from app.routers import pages

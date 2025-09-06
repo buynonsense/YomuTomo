@@ -17,6 +17,49 @@ function testAIConfig(config) {
     .then(response => response.json());
 }
 
+function saveAIConfigToDatabase(config) {
+    const formData = new FormData();
+    formData.append('openai_api_key', config.apiKey);
+    formData.append('openai_base_url', config.baseUrl);
+    formData.append('openai_model', config.model);
+
+    return fetch('/save_ai_config', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json());
+}
+
+function loadAIConfigFromBackend() {
+    return fetch('/get_ai_config')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            // User not logged in or error
+            updateConfigStatus();
+            return;
+        }
+        
+        if (data.configured) {
+            // Update local storage with backend data
+            const config = {
+                apiKey: '***', // Don't store actual API key in localStorage
+                baseUrl: data.has_base_url ? '已设置' : '',
+                model: data.model,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('aiConfig', JSON.stringify(config));
+            updateConfigStatus(true, data.model);
+        } else {
+            updateConfigStatus();
+        }
+    })
+    .catch(error => {
+        console.error('Failed to load AI config from backend:', error);
+        updateConfigStatus();
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     // 仅拦截处理课文的表单，避免影响登录/退出/重命名/删除等
     const form = document.querySelector('form[action="/process_text"]');
@@ -42,8 +85,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Initialize config status
-    updateConfigStatus();
+    // Initialize config status - load from backend
+    loadAIConfigFromBackend();
 
     // Modal event listeners
     setupModalEvents();
@@ -165,9 +208,22 @@ function saveConfig() {
     // Test AI configuration
     testAIConfig(config).then(result => {
         if (result.success) {
-            // Update status to configured
-            updateConfigStatus(true, config.model);
-            showSaveSuccess();
+            // Save configuration to database
+            saveAIConfigToDatabase(config).then(saveResult => {
+                if (saveResult.success) {
+                    // Update status to configured
+                    updateConfigStatus(true, config.model);
+                    showSaveSuccess();
+                } else {
+                    // Update status to error
+                    updateConfigStatus(false, saveResult.message);
+                    showSaveError(saveResult.message);
+                }
+            }).catch(saveError => {
+                console.error('AI config save failed:', saveError);
+                updateConfigStatus(false, '保存失败');
+                showSaveError('配置测试成功但保存失败');
+            });
         } else {
             // Update status to error
             updateConfigStatus(false, result.error);

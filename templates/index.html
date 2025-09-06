@@ -22,6 +22,8 @@
         {% if user %}
           <span class="user-pill">👋 {{ user.email }}</span>
           <a href="/dashboard" class="nav-button">📚 我的文章</a>
+          <button id="crawl-news-btn" class="nav-button">📰 爬取新闻</button>
+          <button id="settings-btn" class="nav-button">⚙️ 设置</button>
           <form method="post" action="/logout" style="display:inline">
             <button type="submit" class="nav-button">🚪 退出登录</button>
           </form>
@@ -87,6 +89,32 @@
           </div>
         </div>
       </div>
+
+      <!-- 用户设置弹窗 -->
+      <div id="settings-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>👤 用户设置</h3>
+            <button id="close-settings-modal" class="btn-close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="input-group">
+              <label for="user-level" style="display: block; margin-bottom: 8px; font-weight: 500;">日语能力等级 (JLPT)</label>
+              <select id="user-level" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                <option value="1">N5 - 初学者 (基础词汇和语法)</option>
+                <option value="2">N4 - 基础水平 (日常会话)</option>
+                <option value="3">N3 - 中级水平 (一般性话题)</option>
+                <option value="4">N2 - 中高级水平 (抽象话题)</option>
+                <option value="5">N1 - 高级水平 (复杂话题)</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="save-settings" class="btn-primary">保存设置</button>
+            <button id="cancel-settings" class="btn-secondary">关闭</button>
+          </div>
+        </div>
+      </div>
     </div>
     <script>
       // 处理表单提交，显示loading页面
@@ -117,6 +145,151 @@
           const modelInput = document.getElementById('model');
           if (modelInput) modelInput.value = config.model;
         }
+
+        // 爬取新闻按钮事件
+        const crawlBtn = document.getElementById('crawl-news-btn');
+        if (crawlBtn) {
+          crawlBtn.addEventListener('click', async function() {
+            if (confirm('确定要爬取最新的NHK新闻吗？系统将在后台处理，您可以关闭浏览器。')) {
+              crawlBtn.disabled = true;
+              crawlBtn.textContent = '⏳ 启动中...';
+              
+              try {
+                const response = await fetch('/crawl_news', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  }
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                  alert('✅ 爬虫任务已启动！系统将在后台处理新闻，您可以关闭浏览器。处理完成后，请查看"我的文章"页面。');
+                  crawlBtn.textContent = '✅ 已启动';
+                  // 开始轮询任务状态
+                  pollCrawlStatus();
+                } else {
+                  alert('启动失败：' + (result.message || '未知错误'));
+                  crawlBtn.disabled = false;
+                  crawlBtn.textContent = '📰 爬取新闻';
+                }
+              } catch (error) {
+                alert('网络错误，请稍后重试');
+                console.error('Crawl error:', error);
+                crawlBtn.disabled = false;
+                crawlBtn.textContent = '📰 爬取新闻';
+              }
+            }
+          });
+        }
+
+        // 轮询爬虫任务状态
+        function pollCrawlStatus() {
+          const statusInterval = setInterval(async () => {
+            try {
+              const response = await fetch('/crawl_status');
+              const status = await response.json();
+              
+              if (status.status === 'completed') {
+                clearInterval(statusInterval);
+                alert('🎉 新闻爬取完成！请查看"我的文章"页面。');
+                window.location.href = '/dashboard';
+              } else if (status.status === 'failed') {
+                clearInterval(statusInterval);
+                alert('❌ 爬取任务失败，请稍后重试');
+                crawlBtn.disabled = false;
+                crawlBtn.textContent = '📰 爬取新闻';
+              } else if (status.status === 'processing') {
+                const progress = status.total_articles > 0 ? 
+                  ` (${status.processed_articles}/${status.total_articles})` : '';
+                crawlBtn.textContent = `⏳ 处理中${progress}`;
+              }
+            } catch (error) {
+              console.error('Status check error:', error);
+            }
+          }, 2000); // 每2秒检查一次状态
+          
+          // 5分钟后停止轮询，避免无限循环
+          setTimeout(() => {
+            clearInterval(statusInterval);
+            crawlBtn.disabled = false;
+            crawlBtn.textContent = '📰 爬取新闻';
+          }, 300000);
+        }
+
+        // 设置按钮事件
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsModal = document.getElementById('close-settings-modal');
+        const cancelSettings = document.getElementById('cancel-settings');
+        const saveSettings = document.getElementById('save-settings');
+        const userLevelSelect = document.getElementById('user-level');
+
+        if (settingsBtn) {
+          settingsBtn.addEventListener('click', function() {
+            // 获取当前用户等级
+            fetch('/get_user_level')
+              .then(response => response.json())
+              .then(data => {
+                if (data.level) {
+                  userLevelSelect.value = data.level;
+                }
+                settingsModal.style.display = 'block';
+              })
+              .catch(error => {
+                console.error('Error fetching user level:', error);
+                settingsModal.style.display = 'block';
+              });
+          });
+        }
+
+        if (closeSettingsModal) {
+          closeSettingsModal.addEventListener('click', function() {
+            settingsModal.style.display = 'none';
+          });
+        }
+
+        if (cancelSettings) {
+          cancelSettings.addEventListener('click', function() {
+            settingsModal.style.display = 'none';
+          });
+        }
+
+        if (saveSettings) {
+          saveSettings.addEventListener('click', async function() {
+            const level = userLevelSelect.value;
+            
+            try {
+              const response = await fetch('/update_user_level', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ level: parseInt(level) })
+              });
+              
+              const result = await response.json();
+              
+              if (response.ok) {
+                alert('设置保存成功！');
+                settingsModal.style.display = 'none';
+              } else {
+                alert('保存失败：' + (result.error || '未知错误'));
+              }
+            } catch (error) {
+              alert('网络错误，请稍后重试');
+              console.error('Save settings error:', error);
+            }
+          });
+        }
+
+        // 点击弹窗外部关闭
+        window.addEventListener('click', function(event) {
+          if (event.target === settingsModal) {
+            settingsModal.style.display = 'none';
+          }
+        });
       });
     </script>
     <script src="/static/js/new_script.js"></script>

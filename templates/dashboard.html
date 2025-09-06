@@ -28,7 +28,7 @@
       </nav>
       <header class="page-header">
         <h1>🗂️ 我的文章</h1>
-        <p>按最近更新排序。打开文章会自动刷新它的更新时间。</p>
+        <p>按最近更新排序。</p>
       </header>
       <main class="main-content">
         <section class="card">
@@ -40,7 +40,7 @@
               <div class="bubble-main" data-article-id="{{ a.id }}" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
-                <div class="bubble-meta">更新：{{ a.updated_at.strftime('%Y-%m-%d %H:%M:%S') if a.updated_at else '' }}</div>
+                <div class="bubble-meta">更新：{{ a.updated_at_beijing.strftime('%Y-%m-%d %H:%M:%S') if a.updated_at_beijing else '' }}</div>
               </div>
               <button class="bubble-menu-btn" data-article-id="{{ a.id }}" aria-label="更多操作">⋯</button>
             </div>

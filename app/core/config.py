@@ -12,10 +12,6 @@ class Settings:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5432/yomu_pg")
 
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
-    OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
-    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-
     # 假名模式：kakasi | hybrid | ai
     FURIGANA_MODE = os.getenv("FURIGANA_MODE", "hybrid")
 

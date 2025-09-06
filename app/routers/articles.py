@@ -51,6 +51,15 @@ async def dashboard(
         .limit(size)
         .all()
     )
+    
+    # 转换时间为北京时间
+    from datetime import timedelta
+    for article in articles:
+        if article.updated_at:
+            article.updated_at_beijing = article.updated_at + timedelta(hours=8)
+        else:
+            article.updated_at_beijing = None
+    
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
@@ -98,35 +107,22 @@ async def show_result(request: Request):
 async def process_text_async(
     request: Request,
     text: str = Form(..., description="日语课文原文"),
-    model: str = Form(None),
+    api_key: str = Form(..., description="OpenAI API Key"),
+    base_url: str = Form(None, description="OpenAI Base URL"),
+    model: str = Form(None, description="OpenAI Model"),
     db: Session = Depends(get_db)
 ):
-    final_model = model or settings.OPENAI_MODEL
-    # 请求头覆盖 + 环境变量默认
-    header_api_key = request.headers.get('X-API-Key')
-    header_base_url = request.headers.get('X-Base-URL')
-    header_model = request.headers.get('X-Model')
-    header_furigana_mode = request.headers.get('X-Furigana-Mode')  # kakasi | hybrid | ai
-    if header_model:
-        final_model = header_model
-    client = get_openai_client(header_api_key, header_base_url)
-    print(f"[TRACE] process_text_async model={final_model} header_api_key={'yes' if header_api_key else 'no'} base_url={header_base_url or 'env'} furigana={header_furigana_mode or settings.FURIGANA_MODE}")
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    final_model = model or "gpt-5-mini"
+    client = get_openai_client(api_key, base_url)
+    print(f"[TRACE] process_text_async model={final_model} user_id={user.id}")
 
-    # 选择假名模式，优先头部
     try:
-        if header_furigana_mode:
-            # 临时覆盖进程配置（仅本次请求用）
-            from app.core import config as _cfg
-            prev = _cfg.settings.FURIGANA_MODE
-            _cfg.settings.FURIGANA_MODE = header_furigana_mode
-            try:
-                # 使用多线程并发生成所有内容
-                ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
-            finally:
-                _cfg.settings.FURIGANA_MODE = prev
-        else:
-            # 使用多线程并发生成所有内容
-            ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
+        # 使用多线程并发生成所有内容
+        ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
     except Exception as e:
         # 返回错误信息
         return {"error": str(e)}
@@ -211,20 +207,17 @@ async def rename_article(article_id: int, request: Request, title: str = Form(..
 @router.post("/test_ai_config", summary="测试 AI 配置是否有效")
 async def test_ai_config(
     request: Request,
-    api_key: str = Form(None),
+    api_key: str = Form(...),
     base_url: str = Form(None),
     model: str = Form(None),
 ):
-    # 从请求头获取配置（优先级：请求头 > 表单 > 环境变量）
-    final_api_key = api_key or request.headers.get('X-API-Key') or settings.OPENAI_API_KEY
-    final_base_url = base_url or request.headers.get('X-Base-URL') or settings.OPENAI_BASE_URL or "https://api.openai.com/v1"
-    final_model = model or request.headers.get('X-Model') or settings.OPENAI_MODEL or "gpt-5-mini"
+    final_model = model or "gpt-5-mini"
     
-    if not final_api_key:
+    if not api_key:
         return {"success": False, "error": "API Key 未提供"}
     
     try:
-        client = get_openai_client(final_api_key, final_base_url)
+        client = get_openai_client(api_key, base_url)
         # 发送一个简单的测试请求
         response = client.chat.completions.create(
             model=final_model,
@@ -234,5 +227,147 @@ async def test_ai_config(
         return {"success": True, "model": final_model}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@router.post("/crawl_news", summary="爬取NHK新闻并生成文章")
+async def crawl_news(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    try:
+        # 检查用户是否已配置AI设置
+        if not user.openai_api_key:
+            return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
+        
+        # 验证AI配置是否有效
+        try:
+            from app.services.services import get_openai_client
+            client = get_openai_client(user.openai_api_key, user.openai_base_url)
+            # 发送一个简单的测试请求
+            test_response = client.chat.completions.create(
+                model=user.openai_model or "gpt-5-mini",
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=5
+            )
+            print(f"[AI] 配置验证成功: {user.openai_model or 'gpt-5-mini'}")
+        except Exception as e:
+            return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
+        
+        from spider.nhk_spider import crawl_and_save_articles
+        result = crawl_and_save_articles(user.id)
+        return result
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@router.get("/get_ai_config", summary="获取用户AI配置状态")
+async def get_ai_config(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"error": "未登录"}
+    
+    return {
+        "configured": bool(user.openai_api_key),
+        "model": user.openai_model or "gpt-5-mini",
+        "has_api_key": bool(user.openai_api_key),
+        "has_base_url": bool(user.openai_base_url)
+    }
+
+
+@router.post("/save_ai_config", summary="保存用户AI配置")
+async def save_ai_config(
+    request: Request,
+    openai_api_key: str = Form(...),
+    openai_base_url: str = Form(None),
+    openai_model: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    try:
+        # 验证AI配置是否有效
+        from app.services.services import get_openai_client
+        client = get_openai_client(openai_api_key, openai_base_url)
+        test_model = openai_model or "gpt-5-mini"
+        
+        # 发送一个简单的测试请求
+        test_response = client.chat.completions.create(
+            model=test_model,
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=5
+        )
+        
+        # 保存配置到数据库
+        user.openai_api_key = openai_api_key
+        user.openai_base_url = openai_base_url
+        user.openai_model = test_model
+        db.commit()
+        
+        return {"success": True, "message": "AI配置保存成功"}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
+
+
+@router.get("/crawl_status", summary="获取爬虫任务状态")
+async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"error": "未登录"}
+    
+    from app.model.models import CrawlTask
+    # 获取用户最新的爬虫任务
+    task = db.query(CrawlTask).filter(
+        CrawlTask.user_id == user.id
+    ).order_by(CrawlTask.created_at.desc()).first()
+    
+    if not task:
+        return {"status": "no_task"}
+    
+    return {
+        "task_id": task.id,
+        "status": task.status,
+        "total_articles": task.total_articles,
+        "processed_articles": task.processed_articles,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat()
+    }
+
+
+@router.get("/get_user_level", summary="获取用户当前等级")
+async def get_user_level(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"error": "未登录"}
+    return {"level": user.level}
+
+
+@router.post("/update_user_level", summary="更新用户等级")
+async def update_user_level(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"error": "未登录"}
+    
+    try:
+        data = await request.json()
+        level = data.get("level")
+        
+        if level is None:
+            return {"error": "缺少等级参数"}
+        
+        level = int(level)
+        if level < 1 or level > 5:
+            return {"error": "等级必须在1-5之间"}
+        
+        user.level = level
+        db.commit()
+        return {"message": "等级更新成功"}
+    except ValueError:
+        return {"error": "等级格式不正确"}
+    except Exception as e:
+        return {"error": f"更新失败: {str(e)}"}
 
 

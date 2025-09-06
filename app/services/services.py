@@ -12,19 +12,20 @@ import threading
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 kks = pykakasi.kakasi()
-_default_client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL or None)
+# 移除默认客户端，使用用户提供的配置
 
 
 def get_openai_client(api_key: str | None, base_url: str | None):
     # 简单调试日志（生产可改为使用logging）
     try:
         masked = (api_key[:6] + '***' + api_key[-4:]) if api_key and len(api_key) > 10 else ('None' if not api_key else '***')
-        print(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}; env base_url={settings.OPENAI_BASE_URL or 'None'}")
+        print(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}")
     except Exception:
         pass
     if api_key:
         return openai.OpenAI(api_key=api_key, base_url=base_url or None)
-    return _default_client
+    else:
+        raise ValueError("必须提供API key才能使用AI功能")
 
 
 def _kakasi_ruby(text: str) -> str:
@@ -90,7 +91,7 @@ def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
     return _ai_fix_ruby(text, base_html, model, client)
 
 
-def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = None) -> List[Dict]:
+def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
     prompt = f"""分析以下日语文本，提取出可能对初学者或中级学习者困难的词语。
 重点提取：
 - 汉字复合词
@@ -112,7 +113,7 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = Non
 文本：{text}"""
     try:
         print(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
-        response = (client or _default_client).chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -129,7 +130,7 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI | None = Non
         return []
 
 
-def translate_to_chinese(text: str, model: str, client: openai.OpenAI | None = None) -> str:
+def translate_to_chinese(text: str, model: str, client: openai.OpenAI) -> str:
     prompt = f"""请将以下日语文本翻译成自然、流畅的中文。
 要求：
 - 保持原文的语气和风格
@@ -142,7 +143,7 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI | None = N
 请直接返回中文翻译，不要添加其他说明。"""
     try:
         print(f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}")
-        response = (client or _default_client).chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -153,7 +154,7 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI | None = N
         return "翻译失败，请检查AI配置"
 
 
-def generate_title(text: str, model: str, client: openai.OpenAI | None = None) -> str:
+def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
     prompt = f"""下面是一段日语课文内容，请你基于主要主题生成一个『简体中文』标题：
 要求：
 1. 仅输出简体中文标题本身，不要任何前缀/引号/标点（例如“标题：”或冒号都不要）。
@@ -165,7 +166,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI | None = None) -
 日语原文（截断前800字符）：\n{text[:800]}\n\n请直接输出标题："""
     try:
         print(f"[AI] CALL generate_title model={model} len(text)={len(text)}")
-        response = (client or _default_client).chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -175,7 +176,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI | None = None) -
         if re.search(r'[\u3040-\u30FF]', title) or re.search(r'[A-Za-z]', title):
             try:
                 fix_prompt = f"请将下面这段标题改写成符合要求的纯简体中文（6~15个汉字，无标点，无外文）：{title}\n只输出改写后的标题。"
-                fix_resp = (client or _default_client).chat.completions.create(
+                fix_resp = client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": fix_prompt}]
                 )
@@ -250,14 +251,14 @@ def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[
             raise Exception(f"AI生成失败: {str(e)}")
 
 
-def generate_emoji(text: str, model: str, client: openai.OpenAI | None = None) -> str:
+def generate_emoji(text: str, model: str, client: openai.OpenAI) -> str:
     prompt = (
         "请从下面文本的主题中，选择一个最能代表它的 emoji。只输出一个 emoji 字符，不要任何其他内容。\n\n"
         f"文本：\n{text[:400]}"
     )
     try:
         print(f"[AI] CALL generate_emoji model={model} len(text)={len(text)}")
-        resp = (client or _default_client).chat.completions.create(
+        resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
         )
