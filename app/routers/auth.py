@@ -3,8 +3,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User
-from app.services import hash_password, verify_password
+from app.model.models import User
+from app.services.services import hash_password, verify_password
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter(prefix="", tags=["认证"])

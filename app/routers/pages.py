@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User
+from app.model.models import User
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter(tags=["主页"])
