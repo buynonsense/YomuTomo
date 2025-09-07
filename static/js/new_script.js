@@ -280,6 +280,15 @@ async function saveConfig() {
                 // Update status to configured
                 aiConfigManager.updateStatus(true, config.model);
                 showSaveSuccess();
+                // Ensure hidden form model and session storage reflect new model immediately
+                try {
+                    const hiddenModel = document.getElementById('model');
+                    if (hiddenModel) hiddenModel.value = config.model || '';
+                    // Update any cached processing model
+                    if (sessionStorage) sessionStorage.setItem('processing_model', config.model || '');
+                } catch (e) {
+                    console.error('无法更新隐藏的 model 值', e);
+                }
             } else {
                 // Update status to error
                 aiConfigManager.updateStatus(false, saveResult.message);

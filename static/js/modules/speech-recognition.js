@@ -79,7 +79,11 @@ class SpeechRecognitionManager {
         // Show ruby text with glow effect
         const rubyTextElement = document.getElementById('ruby-text-data');
         const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
-        highlightText.innerHTML = rubyText;
+        // Only set ruby text if highlight is currently empty to avoid overwriting
+        // dynamic highlights generated during recognition.
+        if (!highlightText.innerHTML || highlightText.innerHTML.trim() === '') {
+          highlightText.innerHTML = rubyText;
+        }
         highlightText.classList.add('glow-active');
       } else {
         highlightText.classList.remove('glow-active');

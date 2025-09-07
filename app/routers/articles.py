@@ -107,7 +107,7 @@ async def show_result(request: Request):
 async def process_text_async(
     request: Request,
     text: str = Form(..., description="日语课文原文"),
-    api_key: str = Form(..., description="OpenAI API Key"),
+    api_key: str = Form(None, description="OpenAI API Key"),
     base_url: str = Form(None, description="OpenAI Base URL"),
     model: str = Form(None, description="OpenAI Model"),
     db: Session = Depends(get_db)
@@ -116,8 +116,15 @@ async def process_text_async(
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
-    final_model = model or "gpt-5-mini"
-    client = get_openai_client(api_key, base_url)
+    # Determine API key and base URL: prefer explicit form fields, then headers, then user's stored config
+    req_api_key = api_key or request.headers.get('x-api-key') or user.openai_api_key
+    req_base_url = base_url or request.headers.get('x-base-url') or user.openai_base_url
+    final_model = model or request.headers.get('x-model') or user.openai_model or "gpt-5-mini"
+
+    if not req_api_key:
+        return {"error": "API Key 未提供"}
+
+    client = get_openai_client(req_api_key, req_base_url)
     print(f"[TRACE] process_text_async model={final_model} user_id={user.id}")
 
     try:

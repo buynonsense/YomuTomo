@@ -72,12 +72,8 @@
               <label for="modal-base-url">Base URL</label>
             </div>
             <div class="input-group">
-              <select id="modal-model">
-                <option value="gpt-5-mini">GPT-5-mini</option>
-                <option value="gpt-5">GPT-5</option>
-                <option value="gpt-5-nano">GPT-5-nano</option>
-              </select>
-              <label for="modal-model">AI模型</label>
+              <input type="text" id="modal-model" autocomplete="off" />
+              <label for="modal-model">AI模型 (可自定义)</label>
             </div>
           </div>
           <div class="modal-footer">
@@ -138,6 +134,11 @@
         try {
           config = JSON.parse(localStorage.getItem('aiConfig') || '{}');
         } catch (e) {}
+        // Populate hidden model input with configured model (supports custom input)
+        try {
+          const modelInput = document.getElementById('model');
+          if (modelInput && config.model) modelInput.value = config.model;
+        } catch (e) { console.error('设置隐藏 model 失败', e); }
         if (config && config.model) {
           const modelInput = document.getElementById('model');
           if (modelInput) modelInput.value = config.model;

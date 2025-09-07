@@ -15,6 +15,17 @@ document.addEventListener('DOMContentLoaded', function () {
   textHighlighter = new TextHighlighter();
   pdfExporter = new PDFExporter();
 
+    // Initialize text highlighter content from DOM so highlightText() has data
+    try {
+        const originalText = document.getElementById('original-text')?.textContent || '';
+        const rubyText = document.getElementById('ruby-text-data')?.innerHTML || '';
+        textHighlighter.setContent(originalText, rubyText);
+        const highlightEl = document.getElementById('highlight-text');
+        if (highlightEl) highlightEl.innerHTML = rubyText;
+    } catch (e) {
+        console.error('初始化高亮文本失败', e);
+    }
+
   // Setup speech recognition
   setupSpeechRecognition();
 
