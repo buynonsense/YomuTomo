@@ -1,0 +1,10 @@
+/* Main CSS File - Simple imports for decoupling */
+
+/* Import the main style file */
+@import 'new_style.css';
+
+/* Import component-specific styles for better organization */
+@import 'components/common.css';
+@import 'components/layout.css';
+@import 'components/forms.css';
+@import 'components/buttons.css';

@@ -169,3 +169,5 @@ Desktop.ini
 # Add any project-specific files you want to ignore
 # config.json
 # secrets.json
+
+.docs/

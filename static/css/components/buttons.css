@@ -1,0 +1,228 @@
+/* Button components - reusable button styles */
+
+/* Base button styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius, 8px);
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition, 0.3s ease);
+  background-color: var(--primary-color, #e91e63);
+  color: white;
+  line-height: 1;
+}
+
+.btn:hover {
+  background-color: var(--secondary-color, #f06292);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(233, 30, 99, 0.2);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn:disabled:hover {
+  background-color: var(--primary-color, #e91e63);
+  transform: none;
+}
+
+/* Button variants */
+.btn-primary {
+  background-color: var(--primary-color, #e91e63);
+  border-color: var(--primary-color, #e91e63);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--secondary-color, #f06292);
+  border-color: var(--secondary-color, #f06292);
+}
+
+.btn-secondary {
+  background-color: var(--secondary-color, #f06292);
+  border-color: var(--secondary-color, #f06292);
+  color: white;
+}
+
+.btn-outline {
+  background-color: transparent;
+  border-color: var(--primary-color, #e91e63);
+  color: var(--primary-color, #e91e63);
+}
+
+.btn-outline:hover {
+  background-color: var(--primary-color, #e91e63);
+  color: white;
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-primary, #333);
+  box-shadow: none;
+}
+
+.btn-ghost:hover {
+  background-color: rgba(233, 30, 99, 0.1);
+  transform: none;
+}
+
+.btn-success {
+  background-color: var(--success-color, #4caf50);
+  border-color: var(--success-color, #4caf50);
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: #45a049;
+  border-color: #45a049;
+}
+
+.btn-danger {
+  background-color: var(--danger-color, #f44336);
+  border-color: var(--danger-color, #f44336);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #da190b;
+  border-color: #da190b;
+}
+
+.btn-warning {
+  background-color: var(--warning-color, #ff9800);
+  border-color: var(--warning-color, #ff9800);
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #e68900;
+  border-color: #e68900;
+}
+
+/* Button sizes */
+.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: calc(var(--border-radius, 8px) * 0.75);
+}
+
+.btn-lg {
+  padding: 1rem 2rem;
+  font-size: 1.125rem;
+  border-radius: calc(var(--border-radius, 8px) * 1.25);
+}
+
+/* Button with icons */
+.btn-icon {
+  padding: 0.75rem;
+  width: auto;
+  min-width: auto;
+}
+
+.btn-icon i,
+.btn-icon svg {
+  margin: 0;
+}
+
+/* Button groups */
+.btn-group {
+  display: inline-flex;
+  border-radius: var(--border-radius, 8px);
+  overflow: hidden;
+}
+
+.btn-group .btn {
+  border-radius: 0;
+  margin: 0;
+}
+
+.btn-group .btn:first-child {
+  border-top-left-radius: var(--border-radius, 8px);
+  border-bottom-left-radius: var(--border-radius, 8px);
+}
+
+.btn-group .btn:last-child {
+  border-top-right-radius: var(--border-radius, 8px);
+  border-bottom-right-radius: var(--border-radius, 8px);
+}
+
+.btn-group .btn:not(:last-child) {
+  border-right: none;
+}
+
+/* Loading state */
+.btn.loading {
+  position: relative;
+  color: transparent;
+}
+
+.btn.loading::after {
+  content: '';
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  color: white;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Full width buttons */
+.btn-block {
+  display: block;
+  width: 100%;
+}
+
+/* Responsive buttons */
+@media (max-width: 768px) {
+  .btn {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+  }
+
+  .btn-sm {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+  }
+
+  .btn-lg {
+    padding: 0.875rem 1.75rem;
+    font-size: 1rem;
+  }
+
+  .btn-group {
+    flex-direction: column;
+  }
+
+  .btn-group .btn {
+    border-radius: var(--border-radius, 8px);
+  }
+
+  .btn-group .btn:not(:last-child) {
+    border-right: 1px solid transparent;
+    border-bottom: none;
+  }
+}

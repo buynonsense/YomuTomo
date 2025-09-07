@@ -6,7 +6,7 @@
     <title>YomuTomo</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="alternate icon" href="/static/favicon.ico" />
-    <link rel="stylesheet" href="/static/css/new_style.css" />
+    <link rel="stylesheet" href="/static/css/main.css" />
   </head>
   <body>
     <div class="container">
@@ -16,17 +16,12 @@
       </header>
 
       <nav class="nav-bar">
-        <style>
-          .user-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:rgba(255,255,255,.9); color:#333; border-radius:22px; font-size:14px; font-weight:500; box-shadow:0 2px 6px rgba(0,0,0,.08); backdrop-filter:blur(4px); }
-          .nav-bar .nav-button { border-radius:22px !important; margin-left:10px; }
-          .nav-bar form { display:inline; }
-        </style>
         {% if user %}
           <span class="user-pill">👋 {{ user.email }}</span>
           <a href="/dashboard" class="nav-button">📚 我的文章</a>
           <button id="crawl-news-btn" class="nav-button">📰 爬取新闻</button>
           <button id="settings-btn" class="nav-button">⚙️ 设置</button>
-          <form method="post" action="/logout" style="display:inline">
+          <form method="post" action="/logout">
             <button type="submit" class="nav-button">🚪 退出登录</button>
           </form>
         {% else %}
@@ -101,8 +96,8 @@
           </div>
           <div class="modal-body">
             <div class="input-group">
-              <label for="user-level" style="display: block; margin-bottom: 8px; font-weight: 500;">日语能力等级 (JLPT)</label>
-              <select id="user-level" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+              <label for="user-level" class="form-label">日语能力等级 (JLPT)</label>
+              <select id="user-level" class="form-select">
                 <option value="1">N5 - 初学者 (基础词汇和语法)</option>
                 <option value="2">N4 - 基础水平 (日常会话)</option>
                 <option value="3">N3 - 中级水平 (一般性话题)</option>
@@ -295,6 +290,11 @@
         });
       });
     </script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/speech-recognition.js"></script>
+    <script src="/static/js/modules/text-highlight.js"></script>
+    <script src="/static/js/modules/pdf-export.js"></script>
+    <script src="/static/js/common.js"></script>
     <script src="/static/js/new_script.js"></script>
   </body>
 </html>

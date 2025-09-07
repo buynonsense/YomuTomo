@@ -1,167 +1,39 @@
 // Form validation and modal management
 
-// 消息通知功能
-function showToast(message, type = 'info', duration = 4000) {
-    // 创建toast容器（如果不存在）
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container';
-        document.body.appendChild(container);
-    }
+// Initialize modules
+let aiConfigManager;
+let speechRecognitionManager;
+let textHighlighter;
+let pdfExporter;
 
-    // 创建toast元素
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    // 根据类型设置图标
-    let icon = 'ℹ️';
-    if (type === 'success') icon = '✅';
-    else if (type === 'error') icon = '❌';
-    else if (type === 'warning') icon = '⚠️';
-    
-    toast.innerHTML = `<span class="toast-icon">${icon}</span>${message}`;
-    
-    // 添加到容器
-    container.appendChild(toast);
-    
-    // 触发显示动画
-    setTimeout(() => toast.classList.add('show'), 10);
-    
-    // 点击关闭
-    toast.addEventListener('click', () => {
-        toast.classList.add('fade-out');
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 400);
-    });
-    
-    // 自动关闭
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.classList.add('fade-out');
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 400);
-        }
-    }, duration);
-}
-
-function getStoredConfig() {
-    const stored = localStorage.getItem('aiConfig');
-    return stored ? JSON.parse(stored) : {};
-}
-
-function testAIConfig(config) {
-    const formData = new FormData();
-    formData.append('api_key', config.apiKey);
-    formData.append('base_url', config.baseUrl);
-    formData.append('model', config.model);
-
-    return fetch('/test_ai_config', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json());
-}
-
-function saveAIConfigToDatabase(config) {
-    const formData = new FormData();
-    formData.append('openai_api_key', config.apiKey);
-    formData.append('openai_base_url', config.baseUrl);
-    formData.append('openai_model', config.model);
-
-    return fetch('/save_ai_config', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json());
-}
-
-function loadAIConfigFromBackend() {
-    return fetch('/get_ai_config')
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            // User not logged in or error
-            updateConfigStatus();
-            return;
-        }
-        
-        if (data.configured) {
-            // Update local storage with backend data
-            const config = {
-                apiKey: '***', // Don't store actual API key in localStorage
-                baseUrl: data.has_base_url ? '已设置' : '',
-                model: data.model,
-                timestamp: Date.now()
-            };
-            localStorage.setItem('aiConfig', JSON.stringify(config));
-            updateConfigStatus(true, data.model);
-        } else {
-            updateConfigStatus();
-        }
-    })
-    .catch(error => {
-        console.error('Failed to load AI config from backend:', error);
-        updateConfigStatus();
-    });
-}
-
+// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
-    // 仅拦截处理课文的表单，避免影响登录/退出/重命名/删除等
-    const form = document.querySelector('form[action="/process_text"]');
-    if (form) {
-        form.addEventListener('submit', function (e) {
-            const config = getStoredConfig();
-            // 不再强制需要本地配置；允许使用后端环境变量/请求头覆盖
-            // 仅在有本地模型配置时附加 model 字段
-            if (config && config.model) {
-                const modelInput = document.createElement('input');
-                modelInput.type = 'hidden';
-                modelInput.name = 'model';
-                modelInput.value = config.model;
-                form.appendChild(modelInput);
-            }
+  // Initialize modules
+  aiConfigManager = new AIConfigManager();
+  speechRecognitionManager = new SpeechRecognitionManager();
+  textHighlighter = new TextHighlighter();
+  pdfExporter = new PDFExporter();
 
-            // Show loading state
-            const submitBtn = form.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.innerHTML = '⏳ 处理中...';
-                submitBtn.disabled = true;
-            }
-        });
-    }
+  // Load AI config from backend
+  aiConfigManager.loadFromBackend();
 
-    // Initialize config status - load from backend
-    loadAIConfigFromBackend();
+  // Setup modal events
+  setupModalEvents();
 
-    // Modal event listeners
-    setupModalEvents();
+  // Setup speech recognition
+  setupSpeechRecognition();
 
-    // Floating label support (ensure labels float when value present even if :placeholder-shown not reliable)
-    function refreshFloating() {
-        document.querySelectorAll('.input-group').forEach(group => {
-            const field = group.querySelector('input, textarea, select');
-            const label = group.querySelector('label');
-            if (!field || !label) return;
-            if (field.value && field.value.trim() !== '') {
-                label.classList.add('force-float');
-            } else {
-                label.classList.remove('force-float');
-            }
-        });
-    }
-    document.addEventListener('input', e => {
-        if (e.target.matches('.input-group input, .input-group textarea, .input-group select')) {
-            refreshFloating();
-        }
-    });
-    refreshFloating();
+  // Setup PDF export
+  setupPDFExport();
+
+  // Setup floating labels
+  setupFloatingLabels();
+
+  // Setup back to top button
+  setupBackToTop();
+
+  // Cache content
+  setTimeout(cacheContent, 800);
 });
 
 function setupModalEvents() {
@@ -206,7 +78,7 @@ function setupModalEvents() {
 
 function openConfigModal() {
     const modal = document.getElementById('config-modal');
-    const config = getStoredConfig();
+    const config = aiConfigManager.config;
 
     // Populate modal with stored values
     const apiKeyInput = document.getElementById('modal-api-key');
@@ -231,7 +103,7 @@ function closeConfigModal() {
     }
 }
 
-function saveConfig() {
+async function saveConfig() {
     const apiKey = document.getElementById('modal-api-key').value.trim();
     const baseUrl = document.getElementById('modal-base-url').value.trim();
     const model = document.getElementById('modal-model').value;
@@ -249,7 +121,7 @@ function saveConfig() {
         timestamp: Date.now()
     };
 
-    localStorage.setItem('aiConfig', JSON.stringify(config));
+    aiConfigManager.saveConfig(config);
 
     // Show loading state
     const saveBtn = document.getElementById('save-config');
@@ -257,42 +129,38 @@ function saveConfig() {
     saveBtn.innerHTML = '⏳ 测试中...';
     saveBtn.disabled = true;
 
-    // Test AI configuration
-    testAIConfig(config).then(result => {
+    try {
+        // Test AI configuration
+        const result = await aiConfigManager.testConfig(config);
         if (result.success) {
             // Save configuration to database
-            saveAIConfigToDatabase(config).then(saveResult => {
-                if (saveResult.success) {
-                    // Update status to configured
-                    updateConfigStatus(true, config.model);
-                    showSaveSuccess();
-                } else {
-                    // Update status to error
-                    updateConfigStatus(false, saveResult.message);
-                    showSaveError(saveResult.message);
-                }
-            }).catch(saveError => {
-                console.error('AI config save failed:', saveError);
-                updateConfigStatus(false, '保存失败');
-                showSaveError('配置测试成功但保存失败');
-            });
+            const saveResult = await aiConfigManager.saveToDatabase(config);
+            if (saveResult.success) {
+                // Update status to configured
+                aiConfigManager.updateStatus(true, config.model);
+                showSaveSuccess();
+            } else {
+                // Update status to error
+                aiConfigManager.updateStatus(false, saveResult.message);
+                showSaveError(saveResult.message);
+            }
         } else {
             // Update status to error
-            updateConfigStatus(false, result.error);
+            aiConfigManager.updateStatus(false, result.error);
             showSaveError(result.error);
         }
-    }).catch(error => {
+    } catch (error) {
         console.error('AI config test failed:', error);
-        updateConfigStatus(false, '测试失败');
+        aiConfigManager.updateStatus(false, '测试失败');
         showSaveError('测试失败，请检查配置');
-    }).finally(() => {
+    } finally {
         // Hide loading state after a short delay to show result
         setTimeout(() => {
             saveBtn.innerHTML = originalText;
             saveBtn.classList.remove('success-animation', 'error-animation');
             saveBtn.disabled = false;
         }, 1500);
-    });
+    }
 
     // Close modal after a delay
     setTimeout(() => {
@@ -301,33 +169,7 @@ function saveConfig() {
 }
 
 function updateConfigStatus(tested = false, modelOrError = '') {
-    const config = getStoredConfig();
-    const statusDiv = document.getElementById('config-status');
-    const statusIcon = document.getElementById('status-icon');
-    const statusText = document.getElementById('status-text');
-
-    if (statusDiv && statusIcon && statusText) {
-        if (config.apiKey) {
-            if (tested === true) {
-                statusDiv.classList.add('configured');
-                statusIcon.textContent = '✅';
-                statusText.textContent = `已配置 (${modelOrError})`;
-            } else if (tested === false) {
-                statusDiv.classList.add('error');
-                statusIcon.textContent = '❓';
-                statusText.textContent = `配置有问题: ${modelOrError}`;
-            } else {
-                // Not tested yet, show as configured but with question mark
-                statusDiv.classList.add('configured');
-                statusIcon.textContent = '❓';
-                statusText.textContent = `已保存 (${config.model}) - 未测试`;
-            }
-        } else {
-            statusDiv.classList.remove('configured', 'error');
-            statusIcon.textContent = '❌';
-            statusText.textContent = '未配置';
-        }
-    }
+    aiConfigManager.updateStatus(tested, modelOrError);
 }
 
 function showSaveSuccess() {
@@ -335,7 +177,6 @@ function showSaveSuccess() {
     if (saveBtn) {
         saveBtn.innerHTML = '✅ 保存成功！';
         saveBtn.classList.add('success-animation');
-        // Don't disable button here since it's already handled by loading state
     }
 }
 
@@ -344,9 +185,61 @@ function showSaveError(error) {
     if (saveBtn) {
         saveBtn.innerHTML = '❌ 保存失败';
         saveBtn.classList.add('error-animation');
-        // Don't disable button here since it's already handled by loading state
     }
 }
+
+function evaluateSpeech(recognizedText) {
+    const resultDiv = document.getElementById('result');
+    const config = aiConfigManager.config;
+
+    // Get original text from hidden element
+    const originalTextElement = document.getElementById('original-text');
+    const originalText = originalTextElement ? originalTextElement.textContent : '';
+
+    fetch('/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            original: originalText,
+            recognized: recognizedText
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (resultDiv) {
+                const scoreColor = data.score >= 80 ? 'var(--success-color)' : data.score >= 60 ? 'var(--warning-color)' : 'var(--danger-color)';
+                resultDiv.innerHTML += `<p><strong>评分：</strong><span style="color: ${scoreColor}; font-size: 1.2em;">${data.score}/100</span></p>`;
+            }
+        })
+        .catch(error => {
+            console.error('评测错误:', error);
+            if (resultDiv) {
+                resultDiv.innerHTML += `<p style="color: var(--danger-color);">评测失败，请重试</p>`;
+            }
+        });
+}
+
+function removeWord(btn) {
+    const item = btn.closest('.vocab-item');
+    if (item) {
+        item.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => {
+            item.remove();
+        }, 300);
+    }
+}
+
+// Add fadeOut animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeOut {
+        to {
+            opacity: 0;
+            transform: translateX(100%);
+        }
+    }
+`;
+document.head.appendChild(style);
 
 // Speech Recognition
 let recognition;
@@ -361,294 +254,111 @@ if ('webkitSpeechRecognition' in window) {
     console.warn('浏览器不支持语音识别');
 }
 
-function initSpeechRecognition() {
-    if (!recognition) return;
+function setupSpeechRecognition() {
+    if (!speechRecognitionManager.isInitialized) return;
 
     const recordBtn = document.getElementById('record-btn');
     const stopBtn = document.getElementById('stop-btn');
-    const resultDiv = document.getElementById('result');
 
     if (recordBtn) {
         recordBtn.addEventListener('click', () => {
-            finalTranscript = '';
-            recognition.start();
-            recordBtn.disabled = true;
-            recordBtn.innerHTML = '🎤 录音中...';
-            if (stopBtn) stopBtn.disabled = false;
-            if (resultDiv) resultDiv.innerHTML = '<p style="color: var(--success-color);">正在录音，请开始朗读...</p>';
-
-            // 激活荧光特效
-            const readingContainer = document.querySelector('.main-content');
-            if (readingContainer) {
-                readingContainer.classList.add('recording-active');
-            }
-
-            const highlightText = document.getElementById('highlight-text');
-            if (highlightText) {
-                // 从隐藏元素获取原文数据
-                const rubyTextElement = document.getElementById('ruby-text-data');
-                const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
-
-                // 直接显示带注音的原文，添加荧光效果
-                highlightText.innerHTML = rubyText;
-                highlightText.classList.add('glow-active');
-            }
+            speechRecognitionManager.clearTranscript();
+            speechRecognitionManager.startRecording();
         });
     }
 
     if (stopBtn) {
         stopBtn.addEventListener('click', () => {
-            recognition.stop();
-            recordBtn.disabled = false;
-            recordBtn.innerHTML = '▶️ 开始录音';
-            stopBtn.disabled = true;
-            if (resultDiv) resultDiv.innerHTML = '<p style="color: var(--warning-color);">录音已停止，正在处理...</p>';
-
-            // 移除荧光特效
-            const readingContainer = document.querySelector('.main-content');
-            if (readingContainer) {
-                readingContainer.classList.remove('recording-active');
-            }
-
-            const highlightText = document.getElementById('highlight-text');
-            if (highlightText) {
-                highlightText.classList.remove('glow-active');
-            }
+            speechRecognitionManager.stopRecording();
         });
     }
 
-    recognition.onresult = (event) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            let transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-                finalTranscript += transcript;
-            } else {
-                interimTranscript += transcript;
-            }
-        }
-
+    // Setup event handlers
+    speechRecognitionManager.onResult((final, interim) => {
+        // Update result display
+        const resultDiv = document.getElementById('result');
         if (resultDiv) {
             resultDiv.innerHTML = `
-                <p><strong>识别文本：</strong>${finalTranscript}<span style="color: var(--text-secondary); font-style: italic;">${interimTranscript}</span></p>
+                <p><strong>识别文本：</strong>${final}<span style="color: var(--text-secondary); font-style: italic;">${interim}</span></p>
             `;
         }
 
         // Highlight matching text
-        if (finalTranscript) {
-            // 简化：不再进行复杂的跟随高亮，只是显示识别文本
-            // highlightText(finalTranscript);
+        if (final) {
+            textHighlighter.highlightText(final);
         }
-    };
+    });
 
-    recognition.onerror = (event) => {
-        console.error('语音识别错误:', event.error);
+    speechRecognitionManager.onError((error) => {
+        console.error('语音识别错误:', error);
+        const resultDiv = document.getElementById('result');
         if (resultDiv) {
-            resultDiv.innerHTML = `<p style="color: var(--danger-color);">语音识别错误: ${event.error}</p>`;
+            resultDiv.innerHTML = `<p style="color: var(--danger-color);">语音识别错误: ${error}</p>`;
         }
-        resetButtons();
-    };
+    });
 
-    recognition.onend = () => {
-        resetButtons();
+    speechRecognitionManager.onEnd((finalTranscript) => {
         if (finalTranscript) {
             // Send to backend for evaluation
             evaluateSpeech(finalTranscript);
         }
-    };
+    });
 }
 
-function resetButtons() {
-    const recordBtn = document.getElementById('record-btn');
-    const stopBtn = document.getElementById('stop-btn');
-
-    if (recordBtn) {
-        recordBtn.disabled = false;
-        recordBtn.innerHTML = '▶️ 开始录音';
-    }
-    if (stopBtn) {
-        stopBtn.disabled = true;
-    }
-
-    // 移除荧光特效
-    const readingContainer = document.querySelector('.main-content');
-    if (readingContainer) {
-        readingContainer.classList.remove('recording-active');
-    }
-
-    const highlightText = document.getElementById('highlight-text');
-    if (highlightText) {
-        highlightText.classList.remove('glow-active');
-    }
-}
-
-function highlightText(recognized) {
-    const highlightText = document.getElementById('highlight-text');
-    if (!highlightText) return;
-
-    // 从隐藏元素获取原文数据
-    const originalTextElement = document.getElementById('original-text');
-    const rubyTextElement = document.getElementById('ruby-text-data');
-    const originalText = originalTextElement ? originalTextElement.textContent : '';
-    const rubyText = rubyTextElement ? rubyTextElement.innerHTML : '';
-
-    // 如果没有识别到内容，显示原始的带注音文本
-    if (!recognized || recognized.trim() === '') {
-        highlightText.innerHTML = rubyText;
-        return;
-    }
-
-    // 卡拉OK式高亮：根据识别进度逐渐点亮文本
-    const recognizedWords = recognized.trim().split(/\s+/);
-    const originalWords = originalText.split(/\s+/);
-
-    let highlightedHTML = '';
-    let recognizedIndex = 0;
-    let originalIndex = 0;
-
-    // 解析ruby文本，提取纯文本词语
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = rubyText;
-    const textContent = tempDiv.textContent || tempDiv.innerText || '';
-
-    // 重新构建带高亮的HTML
-    let rubyHTML = rubyText;
-    let currentPos = 0;
-
-    while (originalIndex < originalWords.length && recognizedIndex < recognizedWords.length) {
-        const originalWord = originalWords[originalIndex];
-        const recognizedWord = recognizedWords[recognizedIndex];
-
-        // 检查是否匹配
-        if (checkWordMatch(originalWord, recognizedWord)) {
-            // 找到匹配的词，在rubyHTML中替换为高亮版本
-            const wordIndex = rubyHTML.indexOf(originalWord, currentPos);
-            if (wordIndex !== -1) {
-                const beforeWord = rubyHTML.substring(0, wordIndex);
-                const afterWord = rubyHTML.substring(wordIndex + originalWord.length);
-                rubyHTML = beforeWord + `<span class="karaoke-highlight">${originalWord}</span>` + afterWord;
-                currentPos = wordIndex + originalWord.length + `<span class="karaoke-highlight">${originalWord}</span>`.length;
-            }
-
-            recognizedIndex++;
-        } else {
-            // 尝试向前查找匹配
-            let found = false;
-            for (let i = 0; i < 3 && originalIndex + i < originalWords.length; i++) {
-                if (checkWordMatch(originalWords[originalIndex + i], recognizedWord)) {
-                    // 标记跳过的词为待读状态
-                    for (let j = 0; j < i; j++) {
-                        const skipWord = originalWords[originalIndex + j];
-                        const skipIndex = rubyHTML.indexOf(skipWord, currentPos);
-                        if (skipIndex !== -1) {
-                            const beforeSkip = rubyHTML.substring(0, skipIndex);
-                            const afterSkip = rubyHTML.substring(skipIndex + skipWord.length);
-                            rubyHTML = beforeSkip + `<span class="karaoke-pending">${skipWord}</span>` + afterSkip;
-                        }
-                    }
-
-                    // 高亮匹配的词
-                    const matchWord = originalWords[originalIndex + i];
-                    const matchIndex = rubyHTML.indexOf(matchWord, currentPos);
-                    if (matchIndex !== -1) {
-                        const beforeMatch = rubyHTML.substring(0, matchIndex);
-                        const afterMatch = rubyHTML.substring(matchIndex + matchWord.length);
-                        rubyHTML = beforeMatch + `<span class="karaoke-highlight">${matchWord}</span>` + afterMatch;
-                        currentPos = matchIndex + matchWord.length + `<span class="karaoke-highlight">${matchWord}</span>`.length;
-                    }
-
-                    originalIndex += i;
-                    recognizedIndex++;
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                // 没有找到匹配，标记为待读
-                const pendingWord = originalWord;
-                const pendingIndex = rubyHTML.indexOf(pendingWord, currentPos);
-                if (pendingIndex !== -1) {
-                    const beforePending = rubyHTML.substring(0, pendingIndex);
-                    const afterPending = rubyHTML.substring(pendingIndex + pendingWord.length);
-                    rubyHTML = beforePending + `<span class="karaoke-pending">${pendingWord}</span>` + afterPending;
-                }
-            }
-        }
-
-        originalIndex++;
-    }
-
-    // 处理剩余的词
-    while (originalIndex < originalWords.length) {
-        const remainingWord = originalWords[originalIndex];
-        const remainingIndex = rubyHTML.indexOf(remainingWord, currentPos);
-        if (remainingIndex !== -1) {
-            const beforeRemaining = rubyHTML.substring(0, remainingIndex);
-            const afterRemaining = rubyHTML.substring(remainingIndex + remainingWord.length);
-            rubyHTML = beforeRemaining + `<span class="karaoke-pending">${remainingWord}</span>` + afterRemaining;
-        }
-        originalIndex++;
-    }
-
-    highlightText.innerHTML = rubyHTML;
-}
-
-function checkWordMatch(originalWord, recognizedWord) {
-    // 移除标点符号进行比较
-    const cleanOriginal = originalWord.replace(/[。、，！？「」『』()（）【】《》〈〉]/g, '');
-    const cleanRecognized = recognizedWord.replace(/[。、，！？「」『』()（）【】《》〈〉]/g, '');
-
-    // 完全匹配
-    if (cleanOriginal === cleanRecognized) {
-        return true;
-    }
-
-    // 长度相似且包含相同字符
-    if (Math.abs(cleanOriginal.length - cleanRecognized.length) <= 1) {
-        const similarity = calculateSimilarity(cleanOriginal, cleanRecognized);
-        return similarity > 0.8;
-    }
-
-    return false;
-}
-
-function calculateSimilarity(str1, str2) {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-
-    if (longer.length === 0) return 1.0;
-
-    const distance = levenshteinDistance(longer, shorter);
-    return (longer.length - distance) / longer.length;
-}
-
-function levenshteinDistance(str1, str2) {
-    const matrix = [];
-
-    for (let i = 0; i <= str2.length; i++) {
-        matrix[i] = [i];
-    }
-
-    for (let j = 0; j <= str1.length; j++) {
-        matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= str2.length; i++) {
-        for (let j = 1; j <= str1.length; j++) {
-            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
+function setupFloatingLabels() {
+    // Floating label support (ensure labels float when value present even if :placeholder-shown not reliable)
+    function refreshFloating() {
+        document.querySelectorAll('.input-group').forEach(group => {
+            const field = group.querySelector('input, textarea, select');
+            const label = group.querySelector('label');
+            if (!field || !label) return;
+            if (field.value && field.value.trim() !== '') {
+                label.classList.add('force-float');
             } else {
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1,
-                    matrix[i][j - 1] + 1,
-                    matrix[i - 1][j] + 1
-                );
+                label.classList.remove('force-float');
             }
-        }
+        });
     }
 
-    return matrix[str2.length][str1.length];
+    document.addEventListener('input', e => {
+        if (e.target.matches('.input-group input, .input-group textarea, .input-group select')) {
+            refreshFloating();
+        }
+    });
+    refreshFloating();
+}
+
+function setupPDFExport() {
+    // Bind PDF export
+    const exportBtn = document.getElementById('export-pdf-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            pdfExporter.exportToPDF();
+        });
+    }
+}
+
+function setupBackToTop() {
+    const backToTopBtn = document.getElementById('back-to-top');
+
+    if (backToTopBtn) {
+        // Show/hide button based on scroll position
+        window.addEventListener('scroll', function() {
+            if (window.pageYOffset > 300) {
+                backToTopBtn.classList.add('visible');
+            } else {
+                backToTopBtn.classList.remove('visible');
+            }
+        });
+
+        // Scroll to top when clicked
+        backToTopBtn.addEventListener('click', function() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+    }
 }
 
 function evaluateSpeech(recognizedText) {
@@ -735,97 +445,27 @@ function cacheContent() {
     } catch (e) { console.warn('缓存失败', e); }
 }
 
-// ===== jsPDF 导出 =====
-async function exportToPDF() {
-    const btn = document.getElementById('export-pdf-btn');
-    if (!btn) return;
-    const old = btn.innerHTML; btn.innerHTML = '⏳ 生成中...'; btn.disabled = true;
-    try {
-        const node = buildPDFNode();
-        if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (_) { } }
-        await new Promise(r => setTimeout(r, 40));
-        const { jsPDF } = window.jspdf || {};
-        if (!jsPDF) throw new Error('jsPDF 加载失败');
-        const canvas = await html2canvas(node, { scale: window.devicePixelRatio > 2 ? 2 : 2, useCORS: true, backgroundColor: '#ffffff' });
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageW = 210, pageH = 297, margin = 10, availH = pageH - 2 * margin;
-        const imgW = pageW - 2 * margin;
-        const imgH = canvas.height * imgW / canvas.width;
-        if (imgH <= availH) {
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, imgW, imgH);
-        } else {
-            const slicePxH = availH * canvas.width / imgW;
-            const temp = document.createElement('canvas');
-            temp.width = canvas.width; temp.height = slicePxH; const ctx = temp.getContext('2d');
-            let y = 0; let page = 0;
-            while (y < canvas.height) {
-                ctx.clearRect(0, 0, temp.width, temp.height);
-                ctx.drawImage(canvas, 0, y, canvas.width, slicePxH, 0, 0, canvas.width, slicePxH);
-                const dataUrl = temp.toDataURL('image/jpeg', 0.95);
-                if (page > 0) pdf.addPage();
-                pdf.addImage(dataUrl, 'JPEG', margin, margin, imgW, availH);
-                y += slicePxH; page++;
+// ===== Form processing =====
+document.addEventListener('DOMContentLoaded', function () {
+    // Intercept form submission for text processing
+    const form = document.querySelector('form[action="/process_text"]');
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            const model = aiConfigManager.getModelForForm();
+            if (model) {
+                const modelInput = document.createElement('input');
+                modelInput.type = 'hidden';
+                modelInput.name = 'model';
+                modelInput.value = model;
+                form.appendChild(modelInput);
             }
-        }
-        const title = (document.getElementById('lesson-title')?.textContent || '日语课文练习').trim();
-        const filename = `${title}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.pdf`;
-        pdf.save(filename);
-    } catch (err) {
-        console.error('PDF导出失败', err);
-        showToast('PDF导出失败: ' + err.message, 'error');
-    } finally {
-        btn.innerHTML = old; btn.disabled = false;
-        const tmp = document.getElementById('__pdf_tmp_wrapper'); if (tmp) tmp.remove();
-    }
-}
 
-function buildPDFNode() {
-    const wrap = document.createElement('div');
-    wrap.id = '__pdf_tmp_wrapper';
-    wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:24px;font-family:\'Noto Sans JP\',Arial,sans-serif;line-height:1.6;';
-    const title = (document.getElementById('lesson-title')?.textContent || '日语课文练习');
-    // 不再需要原文，只导出注音/翻译/词汇
-    const original = ''; // 保留变量，兼容后续逻辑
-    const ruby = document.getElementById('highlight-text')?.innerHTML || '';
-    const translation = document.querySelector('.translation-text')?.innerHTML || '';
-    const vocabItems = Array.from(document.querySelectorAll('.vocab-item'));
-    const vocabHTML = vocabItems.map(it => `<div style="border:1px solid #f8bbd9;background:#fce4ec;padding:6px 8px;border-radius:6px;">
-        <div style='font-size:11px;color:#880e4f;'>${it.querySelector('.vocab-pronunciation')?.textContent || ''}</div>
-        <div style='font-size:13px;font-weight:600;color:#880e4f;'>${it.querySelector('.vocab-word')?.textContent || ''}</div>
-        <div style='font-size:11px;color:#ad1457;'>${it.querySelector('.vocab-meaning')?.textContent || ''}</div>
-    </div>`).join('');
-    wrap.innerHTML = `
-        <h1 style='text-align:center;color:#ad1457;margin:0 0 8px;font-size:24px;'>📚 ${title}</h1>
-        <p style='text-align:center;margin:0 0 18px;color:#666;font-size:12px;'>生成时间: ${new Date().toLocaleString('zh-CN')}</p>
-    <!-- 原文已按需求省略 -->
-        ${ruby ? `<section style='margin-bottom:18px;padding:12px 16px;background:#fff3e0;border-left:4px solid #ff9800;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#ff9800;'>🔤 注音文本</h2><div style='font-size:15px;line-height:2;'>${ruby}</div></section>` : ''}
-        ${translation ? `<section style='margin-bottom:18px;padding:12px 16px;background:#e8f5e8;border-left:4px solid #4caf50;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#4caf50;'>🇨🇳 中文翻译</h2><div style='font-size:15px;'>${translation}</div></section>` : ''}
-        ${vocabItems.length ? `<section style='margin-bottom:18px;padding:12px 16px;background:#fce4ec;border-left:4px solid #e91e63;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#e91e63;'>📖 词汇表</h2><div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;'>${vocabHTML}</div></section>` : ''}
-        <footer style='text-align:center;margin-top:24px;padding-top:12px;border-top:1px solid #ddd;font-size:11px;color:#666;'>🌟 YomuTomo 自动生成 · 继续加油！</footer>`;
-    document.body.appendChild(wrap);
-    return wrap;
-}
-
-// 回到顶部按钮功能
-document.addEventListener('DOMContentLoaded', function() {
-    const backToTopBtn = document.getElementById('back-to-top');
-
-    if (backToTopBtn) {
-        // 监听滚动事件
-        window.addEventListener('scroll', function() {
-            if (window.pageYOffset > 300) { // 滚动超过300px时显示按钮
-                backToTopBtn.classList.add('visible');
-            } else {
-                backToTopBtn.classList.remove('visible');
+            // Show loading state
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '⏳ 处理中...';
+                submitBtn.disabled = true;
             }
-        });
-
-        // 点击按钮回到顶部
-        backToTopBtn.addEventListener('click', function() {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth' // 平滑滚动
-            });
         });
     }
 });

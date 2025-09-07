@@ -6,25 +6,15 @@
     <title>YomuTomo-我的文章</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="alternate icon" href="/static/favicon.ico" />
-    <link rel="stylesheet" href="/static/css/new_style.css" />
+    <link rel="stylesheet" href="/static/css/main.css" />
   </head>
   <body>
     <div class="container">
-      <style>
-        .pagination { margin-top:24px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-        .pagination-btn.disabled { opacity:.5; pointer-events:none; }
-        .pagination-info { color:#fff; font-size:14px; }
-      </style>
       <nav class="nav-bar">
-        <style>
-          .user-pill { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; background:rgba(255,255,255,.9); color:#333; border-radius:22px; font-size:14px; font-weight:500; box-shadow:0 2px 6px rgba(0,0,0,.08); backdrop-filter:blur(4px); }
-          .nav-bar .nav-button { border-radius:22px !important; margin-left:10px; }
-          .nav-bar form { display:inline; }
-        </style>
         {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
         <a href="/" class="nav-button">🏠 首页</a>
         <a href="/dashboard" class="nav-button">📚 我的文章</a>
-        <form method="post" action="/logout" style="display:inline">
+        <form method="post" action="/logout">
           <button type="submit" class="nav-button">🚪 退出登录</button>
         </form>
       </nav>
@@ -131,5 +121,11 @@
         <path d="M10 19L12 16L14 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/speech-recognition.js"></script>
+    <script src="/static/js/modules/text-highlight.js"></script>
+    <script src="/static/js/modules/pdf-export.js"></script>
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/new_script.js"></script>
   </body>
 </html>
