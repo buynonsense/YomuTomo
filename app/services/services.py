@@ -1,7 +1,7 @@
 import json
 import pykakasi
 import openai
-from datetime import datetime
+from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from typing import List, Dict, Tuple
 from app.core.config import settings
@@ -14,6 +14,14 @@ import logging
 from app.services.ai_client_async import AIClient, AIClientError
 
 
+# 日志函数，包含北京时间
+def log_with_time(message: str, level: str = "INFO"):
+    """带北京时间的日志输出"""
+    beijing_time = datetime.utcnow() + timedelta(hours=8)
+    timestamp = beijing_time.strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{timestamp}] [{level}] {message}")
+
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 kks = pykakasi.kakasi()
@@ -24,7 +32,7 @@ def get_openai_client(api_key: str | None, base_url: str | None):
     # 简单调试日志（生产可改为使用logging）
     try:
         masked = (api_key[:6] + '***' + api_key[-4:]) if api_key and len(api_key) > 10 else ('None' if not api_key else '***')
-        print(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}")
+        log_with_time(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}")
     except Exception:
         pass
     if api_key:
@@ -63,7 +71,7 @@ def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: 
         f"当前ruby HTML：\n{kakasi_ruby_html}"
     )
     try:
-        print(f"[AI] CALL _ai_fix_ruby model={model} len(text)={len(original_text)}")
+        log_with_time(f"[AI] CALL _ai_fix_ruby model={model} len(text)={len(original_text)}")
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -71,7 +79,7 @@ def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: 
         content = resp.choices[0].message.content.strip()
         return content or kakasi_ruby_html
     except Exception as e:
-        print(f"[AI] _ai_fix_ruby failed: {e}")
+        log_with_time(f"[AI] _ai_fix_ruby failed: {e}")
         return kakasi_ruby_html
 
 
@@ -82,7 +90,7 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
         f"文本：\n{original_text}"
     )
     try:
-        print(f"[AI] CALL _ai_ruby model={model} len(text)={len(original_text)}")
+        log_with_time(f"[AI] CALL _ai_ruby model={model} len(text)={len(original_text)}")
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -90,7 +98,7 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
         content = resp.choices[0].message.content.strip()
         return content
     except Exception as e:
-        print(f"[AI] _ai_ruby failed: {e}")
+        log_with_time(f"[AI] _ai_ruby failed: {e}")
         return _kakasi_ruby(original_text)
 
 
@@ -127,7 +135,7 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
 
 文本：{text}"""
     try:
-        print(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
+        log_with_time(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -182,7 +190,7 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
             return filtered_words[:5]  # 限制最多5个词语
 
     except Exception as e:
-        print(f"[AI] extract_vocabulary failed: {e}")
+        log_with_time(f"[AI] extract_vocabulary failed: {e}")
         return []
 
 
@@ -198,7 +206,7 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI) -> str:
 
 请直接返回中文翻译，不要添加其他说明。"""
     try:
-        print(f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}")
+        log_with_time(f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}")
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -206,7 +214,7 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI) -> str:
         translation = response.choices[0].message.content.strip()
         return translation
     except Exception as e:
-        print(f"[AI] translate_to_chinese failed: {e}")
+        log_with_time(f"[AI] translate_to_chinese failed: {e}")
         return "翻译失败，请检查AI配置"
 
 
@@ -221,7 +229,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
 
 日语原文（截断前800字符）：\n{text[:800]}\n\n请直接输出标题："""
     try:
-        print(f"[AI] CALL generate_title model={model} len(text)={len(text)}")
+        log_with_time(f"[AI] CALL generate_title model={model} len(text)={len(text)}")
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
@@ -247,7 +255,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
             title = "朗读练习"
         return title or "朗读练习"
     except Exception as e:
-        print(f"[AI] generate_title failed: {e}")
+        log_with_time(f"[AI] generate_title failed: {e}")
         return "朗读练习"
 
 
@@ -313,7 +321,7 @@ def generate_emoji(text: str, model: str, client: openai.OpenAI) -> str:
         f"文本：\n{text[:400]}"
     )
     try:
-        print(f"[AI] CALL generate_emoji model={model} len(text)={len(text)}")
+        log_with_time(f"[AI] CALL generate_emoji model={model} len(text)={len(text)}")
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -324,7 +332,7 @@ def generate_emoji(text: str, model: str, client: openai.OpenAI) -> str:
             emoji = emoji.split()[0]
         return emoji
     except Exception as e:
-        print(f"[AI] generate_emoji failed: {e}")
+        log_with_time(f"[AI] generate_emoji failed: {e}")
         return "📝"
 
 

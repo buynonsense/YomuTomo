@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db import get_db
 from app.model.models import User, Article
-from app.services.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content
+from app.services.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content, log_with_time
 from app.services.ai_client_async import AIClient, AIClientError
 from app.core.config import settings
 
@@ -125,7 +125,7 @@ async def process_text_async(
     # Debug: mask API key to help trace missing-config issues
     try:
         masked = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
-        print(f"[DEBUG] resolved req_api_key={masked}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+        log_with_time(f"[DEBUG] resolved req_api_key={masked}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
     except Exception:
         pass
 
@@ -139,7 +139,7 @@ async def process_text_async(
                 final_model = final_model or fresh.openai_model
                 try:
                     masked2 = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
-                    print(f"[DEBUG-fallback] reloaded user.id={user.id} req_api_key={masked2}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+                    log_with_time(f"[DEBUG-fallback] reloaded user.id={user.id} req_api_key={masked2}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
                 except Exception:
                     pass
         except Exception:
@@ -149,7 +149,7 @@ async def process_text_async(
         return {"error": "API Key 未提供"}
 
     client = get_openai_client(req_api_key, req_base_url)
-    print(f"[TRACE] process_text_async model={final_model} user_id={user.id}")
+    log_with_time(f"[TRACE] process_text_async model={final_model} user_id={user.id}")
 
     try:
         # 使用多线程并发生成所有内容
@@ -285,7 +285,7 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
             provider = {"api_url": user.openai_base_url or '', "api_key": user.openai_api_key, "model": user.openai_model, "extra": {}}
             client = AIClient.factory(provider)
             resp = await client.chat([{"role": "user", "content": "Hello"}])
-            print(f"[AI] 配置验证成功: {user.openai_model}")
+            log_with_time(f"[AI] 配置验证成功: {user.openai_model}")
         except Exception as e:
             return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
         

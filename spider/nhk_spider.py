@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from app.db import get_db
 from app.model.models import Article, User, CrawlTask
-from app.services.services import generate_all_content, get_openai_client
+from app.services.services import generate_all_content, get_openai_client, log_with_time
 from app.core.config import settings
 import os
 import threading
@@ -53,14 +53,14 @@ def get_nhk_easy_news():
                 })
                 
             except Exception as e:
-                print(f"解析新闻项失败: {e}")
+                log_with_time(f"解析新闻项失败: {e}")
                 continue
         
-        print(f"成功获取 {len(news_list)} 条NHK Easy新闻")
+        log_with_time(f"成功获取 {len(news_list)} 条NHK Easy新闻")
         return news_list
         
     except Exception as e:
-        print(f"获取NHK Easy新闻失败: {e}")
+        log_with_time(f"获取NHK Easy新闻失败: {e}")
         # 返回示例数据作为fallback
         return [
             {
@@ -94,13 +94,10 @@ def get_houkago_news():
     """获取放課後NEWS - 暂时返回空列表（网站可能已变更）"""
     try:
         # 放課後NEWS网站可能已不存在或URL变更，暂时返回空列表
-        print("放課後NEWS网站不可访问，跳过此部分")
+        log_with_time("放課後NEWS网站不可访问，跳过此部分")
         return []
     except Exception as e:
-        print(f"获取放課後NEWS失败: {e}")
-        return []
-        print(f"获取放課後NEWS失败: {e}")
-        # 返回空列表，让调用方知道爬取失败
+        log_with_time(f"获取放課後NEWS失败: {e}")
         return []
 
 def get_article_content(url):
@@ -165,7 +162,7 @@ def get_article_content(url):
         return f"无法提取文章内容，请访问原文：{url}"
         
     except Exception as e:
-        print(f"获取文章内容失败 {url}: {e}")
+        log_with_time(f"获取文章内容失败 {url}: {e}")
         return f"获取内容失败：{str(e)}"
 
 def generate_simplified_article(original_text, user_level, model, client):
@@ -250,10 +247,10 @@ def crawl_and_save_articles_background(user_id, task_id):
                     task.processed_articles = processed_count
                     task.updated_at = datetime.utcnow()
                     db.commit()
-                    print(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {news['title']}")
+                    log_with_time(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {news['title']}")
                     
             except Exception as e:
-                print(f"❌ 处理文章失败: {news['title']}, 错误: {e}")
+                log_with_time(f"❌ 处理文章失败: {news['title']}, 错误: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
@@ -262,10 +259,10 @@ def crawl_and_save_articles_background(user_id, task_id):
         task.status = "completed"
         task.updated_at = datetime.utcnow()
         db.commit()
-        print(f"🎉 爬虫任务完成！共处理 {processed_count} 篇文章")
+        log_with_time(f"🎉 爬虫任务完成！共处理 {processed_count} 篇文章")
         
     except Exception as e:
-        print(f"❌ 后台处理失败: {e}")
+        log_with_time(f"❌ 后台处理失败: {e}")
         import traceback
         traceback.print_exc()
         if task:
