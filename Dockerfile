@@ -36,7 +36,7 @@ EXPOSE 3434
 
 # Environment (override OPENAI_API_KEY at runtime: -e OPENAI_API_KEY=sk-xxx)
 ENV OPENAI_API_KEY="" \
-    OPENAI_MODEL="gpt-5-mini" \
+    OPENAI_MODEL="" \
     PYTHONPATH="/app"
 
 # Default command (no reload in container; mount source + override CMD for dev if needed)

@@ -162,7 +162,7 @@ function openConfigModal() {
     // Display real values for editing
     if (apiKeyInput) apiKeyInput.value = config.apiKey || '';
     if (baseUrlInput) baseUrlInput.value = config.baseUrl || 'https://api.openai.com/v1';
-    if (modelSelect) modelSelect.value = config.model || 'gpt-5-mini';
+    if (modelSelect) modelSelect.value = config.model || '';
 
     if (modal) {
     // Reset inline styles in case previous cycles left stale values
@@ -253,6 +253,14 @@ async function saveConfig() {
         showToast('请输入API Key', 'warning');
         return;
     }
+
+    // If targeting Google Generative Language, require a model to avoid posting to the root path which returns 404
+    try {
+        if (baseUrl && baseUrl.includes('generativelanguage.googleapis.com') && (!model || model.trim() === '')) {
+            showToast('Google Generative Language 需要填写模型名（例如 gemini-2.5-flash）', 'warning');
+            return;
+        }
+    } catch (e) { /* defensive */ }
 
     // Save to localStorage
     const config = {

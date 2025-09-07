@@ -151,7 +151,7 @@ function setupBackToTop() {
 
 function evaluateSpeech(recognizedText) {
     const resultDiv = document.getElementById('result');
-    const config = { model: 'gpt-5-mini' }; // Default model
+    const config = { model: '' }; // Default model
 
     // Get original text from hidden element
     const originalTextElement = document.getElementById('original-text');

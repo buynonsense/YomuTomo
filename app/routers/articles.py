@@ -7,6 +7,7 @@ from sqlalchemy import func
 from app.db import get_db
 from app.model.models import User, Article
 from app.services.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content
+from app.services.ai_client_async import AIClient, AIClientError
 from app.core.config import settings
 
 router = APIRouter(prefix="", tags=["文章"])
@@ -119,7 +120,30 @@ async def process_text_async(
     # Determine API key and base URL: prefer explicit form fields, then headers, then user's stored config
     req_api_key = api_key or request.headers.get('x-api-key') or user.openai_api_key
     req_base_url = base_url or request.headers.get('x-base-url') or user.openai_base_url
-    final_model = model or request.headers.get('x-model') or user.openai_model or "gpt-5-mini"
+    final_model = model or request.headers.get('x-model') or user.openai_model
+
+    # Debug: mask API key to help trace missing-config issues
+    try:
+        masked = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
+        print(f"[DEBUG] resolved req_api_key={masked}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+    except Exception:
+        pass
+
+    # If req_api_key is still empty, attempt to reload user from DB (handles stale session/user object)
+    if not req_api_key and user:
+        try:
+            fresh = db.query(User).filter(User.id == user.id).first()
+            if fresh:
+                req_api_key = fresh.openai_api_key or req_api_key
+                req_base_url = fresh.openai_base_url or req_base_url
+                final_model = final_model or fresh.openai_model
+                try:
+                    masked2 = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
+                    print(f"[DEBUG-fallback] reloaded user.id={user.id} req_api_key={masked2}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     if not req_api_key:
         return {"error": "API Key 未提供"}
@@ -218,20 +242,19 @@ async def test_ai_config(
     base_url: str = Form(None),
     model: str = Form(None),
 ):
-    final_model = model or "gpt-5-mini"
-    
+    final_model = model
+
     if not api_key:
         return {"success": False, "error": "API Key 未提供"}
-    
+
+    # Use unified async AI client factory so Gemini (Google) endpoints are handled correctly
+    provider = {"api_url": base_url or '', "api_key": api_key, "model": final_model, "extra": {}}
+    client = AIClient.factory(provider)
     try:
-        client = get_openai_client(api_key, base_url)
-        # 发送一个简单的测试请求
-        response = client.chat.completions.create(
-            model=final_model,
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=5
-        )
-        return {"success": True, "model": final_model}
+        resp = await client.chat([{"role": "user", "content": "Hello"}])
+        return {"success": True, "model": final_model, "text": resp.get('text')}
+    except AIClientError as e:
+        return {"success": False, "error": str(e)}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -243,21 +266,25 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=303)
     
     try:
+        # Reload user from DB to get latest config (handles stale session/user object)
+        try:
+            fresh = db.query(User).filter(User.id == user.id).first()
+            if fresh:
+                user = fresh
+        except Exception:
+            pass
+        
         # 检查用户是否已配置AI设置
         if not user.openai_api_key:
             return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
         
         # 验证AI配置是否有效
         try:
-            from app.services.services import get_openai_client
-            client = get_openai_client(user.openai_api_key, user.openai_base_url)
-            # 发送一个简单的测试请求
-            test_response = client.chat.completions.create(
-                model=user.openai_model or "gpt-5-mini",
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=5
-            )
-            print(f"[AI] 配置验证成功: {user.openai_model or 'gpt-5-mini'}")
+            # Use async AI client directly to avoid asyncio.run() in running event loop
+            provider = {"api_url": user.openai_base_url or '', "api_key": user.openai_api_key, "model": user.openai_model, "extra": {}}
+            client = AIClient.factory(provider)
+            resp = await client.chat([{"role": "user", "content": "Hello"}])
+            print(f"[AI] 配置验证成功: {user.openai_model}")
         except Exception as e:
             return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
         
@@ -278,7 +305,7 @@ async def get_ai_config(request: Request, db: Session = Depends(get_db)):
         "configured": bool(user.openai_api_key),
         "api_key": user.openai_api_key or "",
         "base_url": user.openai_base_url or "",
-        "model": user.openai_model or "gpt-5-mini",
+        "model": user.openai_model,
         "has_api_key": bool(user.openai_api_key),
         "has_base_url": bool(user.openai_base_url)
     }
@@ -297,24 +324,21 @@ async def save_ai_config(
         return RedirectResponse(url="/login", status_code=303)
     
     try:
-        # 验证AI配置是否有效
-        from app.services.services import get_openai_client
-        client = get_openai_client(openai_api_key, openai_base_url)
-        test_model = openai_model or "gpt-5-mini"
-        
-        # 发送一个简单的测试请求
-        test_response = client.chat.completions.create(
-            model=test_model,
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=5
-        )
-        
-        # 保存配置到数据库
+        # Use the unified async AI client to validate provider (handles Gemini/Google GL correctly)
+        test_model = openai_model
+        provider = {"api_url": openai_base_url or '', "api_key": openai_api_key, "model": test_model, "extra": {}}
+        client = AIClient.factory(provider)
+        try:
+            resp = await client.chat([{"role": "user", "content": "Hello"}])
+        except AIClientError as e:
+            db.rollback()
+            return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
+
+        # save configuration to database
         user.openai_api_key = openai_api_key
         user.openai_base_url = openai_base_url
         user.openai_model = test_model
         db.commit()
-        
         return {"success": True, "message": "AI配置保存成功"}
     except Exception as e:
         db.rollback()

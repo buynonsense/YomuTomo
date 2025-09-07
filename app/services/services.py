@@ -7,6 +7,11 @@ from typing import List, Dict, Tuple
 from app.core.config import settings
 import concurrent.futures
 import threading
+import asyncio
+import inspect
+import traceback
+import logging
+from app.services.ai_client_async import AIClient, AIClientError
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,9 +28,18 @@ def get_openai_client(api_key: str | None, base_url: str | None):
     except Exception:
         pass
     if api_key:
-        return openai.OpenAI(api_key=api_key, base_url=base_url or None)
+        # Return a synchronous compatibility client that routes through AIClient.factory
+        provider = {"api_url": base_url or '', "api_key": api_key, "model": None, "extra": {}}
+        return SyncCompatClient(provider)
     else:
-        raise ValueError("必须提供API key才能使用AI功能")
+        # Log caller stack to help trace which code path invoked this without an API key
+        try:
+            caller = inspect.stack()[1]
+            logging.error("get_openai_client called without api_key. caller: %s:%s in %s", caller.filename, caller.lineno, caller.function)
+            logging.error("Call stack:\n%s", ''.join(traceback.format_stack()))
+        except Exception:
+            pass
+        raise ValueError("必须提供API key才能使用AI功能 (get_openai_client called without api_key)")
 
 
 def _kakasi_ruby(text: str) -> str:
@@ -173,7 +187,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
         title = response.choices[0].message.content.strip()
         title = title.strip('"“”『』「」')
         import re
-        if re.search(r'[\u3040-\u30FF]', title) or re.search(r'[A-Za-z]', title):
+        if re.search(r'[ぁ-ゖ]', title) or re.search(r'[A-Za-z]', title):
             try:
                 fix_prompt = f"请将下面这段标题改写成符合要求的纯简体中文（6~15个汉字，无标点，无外文）：{title}\n只输出改写后的标题。"
                 fix_resp = client.chat.completions.create(
@@ -187,7 +201,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
                 pass
         if len(title) > 15:
             title = title[:15]
-        if not re.search(r'[\u4e00-\u9fff]', title):
+        if not re.search(r'[一-龯]', title):
             title = "朗读练习"
         return title or "朗读练习"
     except Exception as e:
@@ -270,5 +284,41 @@ def generate_emoji(text: str, model: str, client: openai.OpenAI) -> str:
     except Exception as e:
         print(f"[AI] generate_emoji failed: {e}")
         return "📝"
+
+
+class SyncCompatCompletions:
+    def __init__(self, provider: dict):
+        self.provider = provider
+
+    def create(self, model: str, messages: list, max_tokens: int = None):
+        # Ensure provider model is set
+        self.provider['model'] = model
+        client = AIClient.factory(self.provider)
+        try:
+            # Run async client in this sync context (safe inside ThreadPoolExecutor worker threads)
+            resp = asyncio.run(client.chat(messages))
+        except Exception as e:
+            # Normalize to raise as-is so callers see the error
+            raise e
+        # Build a small object compatible with existing usage: resp.choices[0].message.content
+        class _Message:
+            def __init__(self, content):
+                self.content = content
+
+        class _Choice:
+            def __init__(self, text):
+                self.message = _Message(text)
+
+        class _Resp:
+            def __init__(self, text, raw):
+                self.choices = [_Choice(text)]
+                self.raw = raw
+
+        return _Resp(resp.get('text', ''), resp.get('raw'))
+
+
+class SyncCompatClient:
+    def __init__(self, provider: dict):
+        self.chat = type('C', (), {'completions': SyncCompatCompletions(provider)})()
 
 

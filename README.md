@@ -167,7 +167,7 @@ POSTGRES_PASSWORD=your_secure_password
 # AI配置
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=
 
 # 应用配置
 SECRET_KEY=your_secret_key_here
@@ -256,7 +256,7 @@ alembic/ alembic.ini    # 数据库迁移
 2. 配置环境变量（可选）：
    - `OPENAI_API_KEY`: OpenAI API Key
    - `OPENAI_BASE_URL`: 可选，自定义 API Base URL
-   - `OPENAI_MODEL`: 可选，默认 `gpt-5-mini`
+   - `OPENAI_MODEL`: 可选，默认空值
    - `SECRET_KEY`: 会话密钥（用于登录会话），建议设置为随机字符串
    - `DATABASE_URL`: 可选，默认 `postgresql://postgres:1234@localhost:5432/yomu_pg`
 3. 初始化数据库：启动 Docker Compose 会自动创建数据库和表
@@ -281,7 +281,7 @@ alembic/ alembic.ini    # 数据库迁移
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`（可选）
-- `OPENAI_MODEL`（默认 `gpt-5-mini`）
+- `OPENAI_MODEL`（默认空值）
 
 同时支持在请求时用“请求头”临时覆盖（优先级：请求头 > 环境变量）。表单仅保留 `model` 字段（可选）。
 

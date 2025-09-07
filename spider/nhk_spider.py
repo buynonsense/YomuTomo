@@ -212,7 +212,7 @@ def crawl_and_save_articles_background(user_id, task_id):
         
         user_level = user.level
         client = get_openai_client(user.openai_api_key, user.openai_base_url)
-        model = user.openai_model or "gpt-5-mini"
+        model = user.openai_model
         
         nhk_news = get_nhk_easy_news()
         # 只使用NHK Easy新闻，移除放課後NEWS
