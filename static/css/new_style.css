@@ -965,6 +965,14 @@ rt {
   max-height: 80vh;
   overflow-y: auto;
   animation: slideIn 0.3s ease;
+  /* Ensure smooth transform/opacity transitions on close */
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+/* Closing state: keep modal centered but animate content out smoothly */
+.modal.closing .modal-content {
+  transform: translateY(12px) scale(0.98);
+  opacity: 0;
 }
 
 .modal-header {

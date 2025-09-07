@@ -66,8 +66,8 @@ class AIConfigManager {
 
       if (data.configured) {
         const config = {
-          apiKey: '***',
-          baseUrl: data.has_base_url ? '已设置' : '',
+          apiKey: data.api_key || '',
+          baseUrl: data.base_url || '',
           model: data.model,
           timestamp: Date.now()
         };
@@ -92,7 +92,7 @@ class AIConfigManager {
         if (tested === true) {
           statusDiv.classList.add('configured');
           statusIcon.textContent = '✅';
-          statusText.textContent = `已配置 (${modelOrError})`;
+          statusText.textContent = `已配置 - API Key: ${this.config.apiKey.substring(0, 8)}..., Base URL: ${this.config.baseUrl || '默认'} (${modelOrError})`;
         } else if (tested === false) {
           statusDiv.classList.add('error');
           statusIcon.textContent = '❓';
@@ -100,7 +100,7 @@ class AIConfigManager {
         } else {
           statusDiv.classList.add('configured');
           statusIcon.textContent = '❓';
-          statusText.textContent = `已保存 (${this.config.model}) - 未测试`;
+          statusText.textContent = `已保存 - API Key: ${this.config.apiKey.substring(0, 8)}..., Base URL: ${this.config.baseUrl || '默认'} (${this.config.model}) - 未测试`;
         }
       } else {
         statusDiv.classList.remove('configured', 'error');

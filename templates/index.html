@@ -233,24 +233,24 @@
                 if (data.level) {
                   userLevelSelect.value = data.level;
                 }
-                settingsModal.style.display = 'block';
+                settingsModal.classList.add('show');
               })
               .catch(error => {
                 console.error('Error fetching user level:', error);
-                settingsModal.style.display = 'block';
+                settingsModal.classList.add('show');
               });
           });
         }
 
         if (closeSettingsModal) {
           closeSettingsModal.addEventListener('click', function() {
-            settingsModal.style.display = 'none';
+            settingsModal.classList.remove('show');
           });
         }
 
         if (cancelSettings) {
           cancelSettings.addEventListener('click', function() {
-            settingsModal.style.display = 'none';
+            settingsModal.classList.remove('show');
           });
         }
 
@@ -271,7 +271,7 @@
               
               if (response.ok) {
                 showToast('设置保存成功！', 'success');
-                settingsModal.style.display = 'none';
+                settingsModal.classList.remove('show');
               } else {
                 showToast('保存失败：' + (result.error || '未知错误'), 'error');
               }
@@ -285,12 +285,17 @@
         // 点击弹窗外部关闭
         window.addEventListener('click', function(event) {
           if (event.target === settingsModal) {
-            settingsModal.style.display = 'none';
+            settingsModal.classList.remove('show');
           }
         });
       });
     </script>
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/speech-recognition.js"></script>
+    <script src="/static/js/modules/text-highlight.js"></script>
+    <script src="/static/js/modules/pdf-export.js"></script>
+    <script src="/static/js/new_script.js"></script>
     <script src="/static/js/pages/home.js"></script>
   </body>
 </html>

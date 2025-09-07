@@ -269,6 +269,8 @@ async def get_ai_config(request: Request, db: Session = Depends(get_db)):
     
     return {
         "configured": bool(user.openai_api_key),
+        "api_key": user.openai_api_key or "",
+        "base_url": user.openai_base_url or "",
         "model": user.openai_model or "gpt-5-mini",
         "has_api_key": bool(user.openai_api_key),
         "has_base_url": bool(user.openai_base_url)

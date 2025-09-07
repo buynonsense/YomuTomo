@@ -6,7 +6,17 @@ let speechRecognitionManager;
 let textHighlighter;
 let pdfExporter;
 
-// Initialize when DOM is loaded
+// Ensure modal is hidden on load if present (defensive - avoid referencing undefined)
+setTimeout(() => {
+    const modal = document.getElementById('config-modal');
+    if (modal && !modal.classList.contains('show')) {
+        modal.style.display = 'none';
+        modal.style.opacity = '';
+        modal.style.transform = '';
+        modal.style.pointerEvents = 'none';
+        modal.style.visibility = 'hidden';
+    }
+}, 300); // Wait for transition to complete when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
   // Initialize modules
   aiConfigManager = new AIConfigManager();
@@ -36,6 +46,16 @@ document.addEventListener('DOMContentLoaded', function () {
   setTimeout(cacheContent, 800);
 });
 
+// Modal event handlers - defined globally to allow proper removal
+let modalOutsideClickHandler = null;
+let modalEscapeKeyHandler = null;
+let configBtnClickHandler = null;
+// Stable modal open state to avoid classList race conditions
+let isConfigModalOpen = false;
+// Timeout handles to avoid race conditions between open/close
+let modalCloseTimer = null;
+let bodyRestoreTimer = null;
+
 function setupModalEvents() {
     const configBtn = document.getElementById('config-btn');
     const closeBtn = document.getElementById('close-modal');
@@ -43,70 +63,191 @@ function setupModalEvents() {
     const saveBtn = document.getElementById('save-config');
     const modal = document.getElementById('config-modal');
 
-    if (configBtn) {
-        configBtn.addEventListener('click', openConfigModal);
+    // Use event delegation for the config button to survive DOM replacements
+    if (!window._hasDelegatedConfigClick) {
+        window._configClickCount = 0;
+        window._configOpenCount = 0;
+        window._configCloseCount = 0;
+        const delegatedHandler = function(e) {
+            // allow clicks on the button or within it
+            const btn = e.target.closest && e.target.closest('#config-btn');
+            if (btn) {
+                window._configClickCount++;
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                openConfigModal();
+            }
+        };
+    document.addEventListener('click', delegatedHandler);
+    window._hasDelegatedConfigClick = true;
     }
 
     if (closeBtn) {
+        closeBtn.removeEventListener('click', closeConfigModal);
         closeBtn.addEventListener('click', closeConfigModal);
     }
 
     if (cancelBtn) {
+        cancelBtn.removeEventListener('click', closeConfigModal);
         cancelBtn.addEventListener('click', closeConfigModal);
     }
 
     if (saveBtn) {
+        saveBtn.removeEventListener('click', saveConfig);
         saveBtn.addEventListener('click', saveConfig);
     }
 
+    // configBtn listener is attached above with guarding
+
     // Close modal when clicking outside
     if (modal) {
-        modal.addEventListener('click', function (e) {
+        if (modalOutsideClickHandler) {
+            modal.removeEventListener('click', modalOutsideClickHandler);
+        }
+        modalOutsideClickHandler = function (e) {
+            
             if (e.target === modal) {
                 closeConfigModal();
             }
-        });
+        };
+    modal.addEventListener('click', modalOutsideClickHandler);
     }
 
     // Close modal on Escape key
-    document.addEventListener('keydown', function (e) {
+    if (modalEscapeKeyHandler) {
+        document.removeEventListener('keydown', modalEscapeKeyHandler);
+    }
+    modalEscapeKeyHandler = function (e) {
         if (e.key === 'Escape' && modal && modal.classList.contains('show')) {
             closeConfigModal();
         }
-    });
+    };
+    document.addEventListener('keydown', modalEscapeKeyHandler);
 }
 
+// Clean up handlers on page unload to avoid leaks
+window.addEventListener('beforeunload', () => {
+    const modal = document.getElementById('config-modal');
+    const configBtn = document.getElementById('config-btn');
+    if (configBtn && configBtnClickHandler) configBtn.removeEventListener('click', configBtnClickHandler);
+    if (modal && modalOutsideClickHandler) modal.removeEventListener('click', modalOutsideClickHandler);
+    if (modalEscapeKeyHandler) document.removeEventListener('keydown', modalEscapeKeyHandler);
+    
+});
+
 function openConfigModal() {
+    
     const modal = document.getElementById('config-modal');
     const config = aiConfigManager.config;
+
+    // Prevent opening if already open (use stable boolean)
+    if (isConfigModalOpen) {
+        return;
+    }
+
+    // Cancel any pending close timers to avoid race where close's timeout hides the modal after reopen
+    if (modalCloseTimer) {
+        clearTimeout(modalCloseTimer);
+        modalCloseTimer = null;
+    }
+    if (bodyRestoreTimer) {
+        clearTimeout(bodyRestoreTimer);
+        bodyRestoreTimer = null;
+    }
 
     // Populate modal with stored values
     const apiKeyInput = document.getElementById('modal-api-key');
     const baseUrlInput = document.getElementById('modal-base-url');
     const modelSelect = document.getElementById('modal-model');
 
+    // Display real values for editing
     if (apiKeyInput) apiKeyInput.value = config.apiKey || '';
     if (baseUrlInput) baseUrlInput.value = config.baseUrl || 'https://api.openai.com/v1';
     if (modelSelect) modelSelect.value = config.model || 'gpt-5-mini';
 
     if (modal) {
-        modal.classList.add('show');
+    // Reset inline styles in case previous cycles left stale values
+    modal.style.display = '';
+    modal.style.opacity = '';
+    modal.style.transform = '';
+    modal.style.pointerEvents = '';
+    modal.style.visibility = '';
+
+    modal.classList.add('show');
         document.body.style.overflow = 'hidden';
+        document.body.style.overflowX = 'hidden';
+        document.body.style.overflowY = 'hidden';
+
+        // Ensure modal is visible and properly positioned
+        modal.style.display = 'flex';
+        modal.style.pointerEvents = 'auto';
+        modal.style.visibility = 'visible';
+    isConfigModalOpen = true;
+    } else {
+        console.error('Modal element not found!');
     }
 }
 
 function closeConfigModal() {
+    
     const modal = document.getElementById('config-modal');
     if (modal) {
-        modal.classList.remove('show');
-        document.body.style.overflow = 'auto';
+    // Mark closed flag immediately, but keep the `.show` class until the transition finishes
+    isConfigModalOpen = false;
+
+    // Disable pointer events on modal immediately to avoid interaction during closing
+    modal.style.pointerEvents = 'none';
+    // Add a 'closing' class to animate content smoothly without layout jumps
+    try { modal.classList.add('closing'); } catch (e) {}
+
+    // Schedule actual class removal and hiding after transition duration
+    modalCloseTimer = setTimeout(() => {
+        modalCloseTimer = null;
+        // remove show to allow CSS to fall back, then hide the element
+        try {
+            modal.classList.remove('show');
+            modal.classList.remove('closing');
+        } catch (e) { /* defensive */ }
+        if (modal) {
+            modal.style.display = 'none';
+            modal.style.opacity = '';
+            modal.style.transform = '';
+            modal.style.pointerEvents = '';
+            modal.style.visibility = 'hidden';
+            
+        }
+    }, 300); // Wait for transition to complete
+
+        // Re-enable the config button after closing
+        const configBtn = document.getElementById('config-btn');
+        if (configBtn) {
+            configBtn.disabled = false;
+            configBtn.style.pointerEvents = 'auto';
+        }
+
+        // Force body scroll restoration (store timer so open can cancel it)
+        bodyRestoreTimer = setTimeout(() => {
+            bodyRestoreTimer = null;
+            document.body.style.overflow = '';
+            document.body.style.overflowX = '';
+            document.body.style.overflowY = '';
+            
+
+            // Keep modal event handlers attached so repeated open/close works reliably.
+            // They will be removed on page unload if needed.
+        }, 350);
+    } else {
+        console.error('Modal element not found for closing!');
     }
 }
 
 async function saveConfig() {
-    const apiKey = document.getElementById('modal-api-key').value.trim();
-    const baseUrl = document.getElementById('modal-base-url').value.trim();
-    const model = document.getElementById('modal-model').value;
+    const apiKeyInput = document.getElementById('modal-api-key');
+    const baseUrlInput = document.getElementById('modal-base-url');
+    const modelSelect = document.getElementById('modal-model');
+
+    const apiKey = apiKeyInput.value.trim();
+    const baseUrl = baseUrlInput.value.trim();
+    const model = modelSelect.value;
 
     if (!apiKey) {
         showToast('请输入API Key', 'warning');
@@ -251,7 +392,7 @@ if ('webkitSpeechRecognition' in window) {
     recognition.interimResults = true;
     recognition.lang = 'ja-JP';
 } else {
-    console.warn('浏览器不支持语音识别');
+    // 浏览器不支持语音识别 - 静默降级
 }
 
 function setupSpeechRecognition() {
@@ -402,18 +543,6 @@ function removeWord(btn) {
     }
 }
 
-// Add fadeOut animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes fadeOut {
-        to {
-            opacity: 0;
-            transform: translateX(100%);
-        }
-    }
-`;
-document.head.appendChild(style);
-
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
     initSpeechRecognition();
@@ -442,7 +571,7 @@ function cacheContent() {
             ts: Date.now()
         };
         if (data.original) localStorage.setItem('lessonContent', JSON.stringify(data));
-    } catch (e) { console.warn('缓存失败', e); }
+    } catch (e) { /* 缓存失败，静默忽略 */ }
 }
 
 // ===== Form processing =====
