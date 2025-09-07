@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 # 加载环境变量
 load_dotenv()
@@ -13,6 +15,22 @@ from app.routers import pages
 from app.routers import auth
 from app.routers import articles
 from app.routers import evaluation
+
+
+class ExtensionCompatibilityMiddleware(BaseHTTPMiddleware):
+    """中间件来减少Chrome扩展冲突"""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+
+        # 为HTML页面添加有助于密码管理器的头
+        if request.url.path in ['/login', '/register'] and isinstance(response, Response):
+            response.headers['X-Frame-Options'] = 'DENY'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+            response.headers['Permissions-Policy'] = 'clipboard-write=(), clipboard-read=()'
+
+        return response
 
 
 tags_metadata = [
@@ -34,6 +52,7 @@ app = FastAPI(
 
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(ExtensionCompatibilityMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 

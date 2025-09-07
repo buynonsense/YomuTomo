@@ -30,8 +30,17 @@ async def register(
     request: Request,
     email: str = Form(..., description="邮箱，用作登录账号"),
     password: str = Form(..., description="密码，将进行哈希存储"),
+    confirm_password: str = Form(..., description="确认密码"),
     db: Session = Depends(get_db),
 ):
+    # Validate password confirmation
+    if password != confirm_password:
+        return templates.TemplateResponse("register.html", {"request": request, "error": "两次输入的密码不一致"})
+
+    # Validate password length
+    if len(password) < 6:
+        return templates.TemplateResponse("register.html", {"request": request, "error": "密码长度至少需要6个字符"})
+
     existing = db.query(User).filter(User.email == email).first()
     if existing:
         return templates.TemplateResponse("register.html", {"request": request, "error": "邮箱已被注册"})
