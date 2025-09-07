@@ -207,6 +207,7 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
             "vocab": vocab,
             "translation": article.translation,
             "title": article.title,
+            "source_url": article.source_url,
         },
     )
 

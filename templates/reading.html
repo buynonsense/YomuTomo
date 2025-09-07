@@ -26,6 +26,13 @@
 
       <header class="page-header">
   <h1>🎤 {{ title }}</h1>
+  {% if source_url %}
+  <div class="source-link" style="margin: 10px 0;">
+    <a href="{{ source_url }}" target="_blank" class="btn-secondary" title="查看原文">
+      🔗 查看原文
+    </a>
+  </div>
+  {% endif %}
   <p>跟随高亮部分朗读，提升发音准确度</p>
       </header>
 

@@ -34,6 +34,11 @@
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
                 <div class="bubble-meta">更新：{{ a.updated_at_beijing.strftime('%Y-%m-%d %H:%M:%S') if a.updated_at_beijing else '' }}</div>
               </div>
+              {% if a.source_url %}
+              <a href="{{ a.source_url }}" target="_blank" class="bubble-source-btn" title="查看原文" aria-label="查看原文">
+                🔗
+              </a>
+              {% endif %}
               <button class="bubble-menu-btn" data-article-id="{{ a.id }}" aria-label="更多操作">⋯</button>
             </div>
             {% endfor %}
@@ -95,11 +100,18 @@
       document.addEventListener('click', (e)=>{
         const overlay = document.getElementById('action-panel-overlay');
         const menuBtn = e.target.closest('.bubble-menu-btn');
+        const sourceBtn = e.target.closest('.bubble-source-btn');
         const bubbleMain = e.target.closest('.bubble-main');
         if(menuBtn){
           e.stopPropagation();
           const bubble = menuBtn.closest('.article-bubble');
           showActionPanelFromBubble(bubble);
+          return;
+        }
+        if(sourceBtn){
+          // 溯源按钮的点击已经由<a>标签处理，这里不需要额外处理
+          // 只是为了阻止事件冒泡
+          e.stopPropagation();
           return;
         }
         if(bubbleMain){
