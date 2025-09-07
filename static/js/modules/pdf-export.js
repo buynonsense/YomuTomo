@@ -35,28 +35,55 @@ class PDFExporter {
         backgroundColor: '#ffffff'
       });
 
+      // Create a master white-backed canvas and draw the html2canvas result onto it.
+      // This guarantees the canvas has an opaque white background and removes any
+      // remaining alpha/transparency that could turn black during encoding.
+      const master = document.createElement('canvas');
+      master.width = canvas.width;
+      master.height = canvas.height;
+      const mctx = master.getContext('2d');
+      mctx.fillStyle = '#ffffff';
+      mctx.fillRect(0, 0, master.width, master.height);
+      mctx.drawImage(canvas, 0, 0);
+
+  // TODO[TechDebt]: 已用白底 master canvas 作为临时修复，若后续仍有问题需实现更鲁棒的分块策略。
+
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageW = 210, pageH = 297, margin = 10, availH = pageH - 2 * margin;
-      const imgW = pageW - 2 * margin;
-      const imgH = canvas.height * imgW / canvas.width;
+  const imgW = pageW - 2 * margin;
+  const imgH = master.height * imgW / master.width;
 
       if (imgH <= availH) {
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, imgW, imgH);
+        // Use PNG from the master (white-backed) canvas to ensure opaque background
+        pdf.addImage(master.toDataURL('image/png'), 'PNG', margin, margin, imgW, imgH);
       } else {
-        const slicePxH = availH * canvas.width / imgW;
+        const slicePxH = availH * master.width / imgW;
         const temp = document.createElement('canvas');
-        temp.width = canvas.width; temp.height = slicePxH;
-        const ctx = temp.getContext('2d');
+        temp.width = canvas.width;
+        let tempHeight = slicePxH;
+        temp.height = tempHeight;
+        let ctx = temp.getContext('2d');
 
         let y = 0;
         let page = 0;
         while (y < canvas.height) {
-          ctx.clearRect(0, 0, temp.width, temp.height);
-          ctx.drawImage(canvas, 0, y, canvas.width, slicePxH, 0, 0, canvas.width, slicePxH);
-          const dataUrl = temp.toDataURL('image/jpeg', 0.95);
+          // compute current slice height (last slice may be smaller)
+          const curH = Math.min(slicePxH, canvas.height - y);
+          if (temp.height !== curH) {
+            temp.height = curH;
+            ctx = temp.getContext('2d');
+          }
+          // fill white background to avoid transparency turning black when saving as JPEG
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, temp.width, temp.height);
+          // Draw from the master canvas (white-backed) to avoid any alpha issues
+          ctx.drawImage(master, 0, y, master.width, curH, 0, 0, master.width, curH);
+          const dataUrl = temp.toDataURL('image/png');
+          // compute scaled height in mm for this slice
+          const scaledH = curH * imgW / master.width;
           if (page > 0) pdf.addPage();
-          pdf.addImage(dataUrl, 'JPEG', margin, margin, imgW, availH);
-          y += slicePxH;
+          pdf.addImage(dataUrl, 'PNG', margin, margin, imgW, scaledH);
+          y += curH;
           page++;
         }
       }
