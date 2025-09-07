@@ -114,10 +114,11 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
 - 不常见的表达
 
 对于每个词语，请提供：
-- word: 日语词语
+- word: 日语词语（必须是日语，不要包含英文）
 - meaning: 中文释义
 - pronunciation: 罗马音读音
 
+只提取真正困难的词语（3-8个），跳过简单词语如"です"、"ます"等。
 返回JSON格式的数组，例如：
 [
   {{"word": "こんにちは", "meaning": "你好", "pronunciation": "konnichiwa"}},
@@ -132,13 +133,54 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
             messages=[{"role": "user", "content": prompt}]
         )
         content = response.choices[0].message.content.strip()
+
+        # 尝试解析JSON
         if content.startswith('[') and content.endswith(']'):
             vocab = json.loads(content)
-            return vocab
+
+            # 过滤和验证结果
+            filtered_vocab = []
+            for item in vocab:
+                if isinstance(item, dict) and 'word' in item and 'meaning' in item and 'pronunciation' in item:
+                    word = item['word'].strip()
+                    meaning = item['meaning'].strip()
+                    pronunciation = item['pronunciation'].strip()
+
+                    # 过滤掉英文单词和无效内容
+                    if (word and meaning and pronunciation and
+                        not word.isascii() and  # 确保是日语（包含非ASCII字符）
+                        len(word) > 1 and  # 跳过单字符
+                        not any(char.isdigit() for char in word) and  # 不包含数字
+                        word not in ['word', 'meaning', 'pronunciation', 'taifuu']):  # 过滤已知错误
+
+                        filtered_vocab.append({
+                            'word': word,
+                            'meaning': meaning,
+                            'pronunciation': pronunciation
+                        })
+
+            return filtered_vocab[:8]  # 限制最多8个词语
+
         else:
+            # 如果不是JSON格式，尝试提取可能的日语词语
             import re
-            words = re.findall(r'"([^"]*)"', content)
-            return [{"word": word, "meaning": "释义待补充", "pronunciation": "读音待补充"} for word in words]
+            # 只匹配包含汉字或平假名的词语
+            japanese_words = re.findall(r'["\']([^\x00-\x7F]{1,10})["\']', content)
+            filtered_words = []
+
+            for word in japanese_words:
+                word = word.strip()
+                if (len(word) > 1 and
+                    not any(char.isdigit() for char in word) and
+                    word not in ['word', 'meaning', 'pronunciation', 'taifuu']):
+                    filtered_words.append({
+                        'word': word,
+                        'meaning': '释义待补充',
+                        'pronunciation': '读音待补充'
+                    })
+
+            return filtered_words[:5]  # 限制最多5个词语
+
     except Exception as e:
         print(f"[AI] extract_vocabulary failed: {e}")
         return []
