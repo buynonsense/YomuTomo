@@ -422,22 +422,6 @@ button.nav-button:hover, .nav-bar button.nav-button:hover {
     padding-bottom: 4px;
   }
 
-  /* 移动端生词卡片调整 */
-  .vocab-item {
-    min-height: 100px;
-    padding: 8px;
-    gap: 4px;
-  }
-
-  .vocab-word {
-    font-size: 1rem;
-  }
-
-  .vocab-meaning {
-    font-size: 0.75rem;
-    line-height: 1.2;
-  }
-
   /* 移动端按钮优化 */
   .btn-primary,
   .btn-record,
@@ -445,11 +429,6 @@ button.nav-button:hover, .nav-bar button.nav-button:hover {
     padding: 12px 20px;
     font-size: 14px;
     min-height: 44px;
-  }
-
-  .btn-remove {
-    padding: 6px 10px;
-    font-size: 12px;
   }
 
   /* 移动端modal优化 */
@@ -804,6 +783,26 @@ rt {
   transform: translateY(-1px);
 }
 
+.sentence-token {
+  display: inline;
+}
+
+.sentence-token--word {
+  display: inline-block;
+  padding: 0 2px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sentence-token--word.is-active {
+  background: rgba(233, 30, 99, 0.18);
+  color: var(--primary-color);
+}
+
+.sentence-token--word.is-pending {
+  opacity: 0.45;
+}
+
 .sentence-empty {
   margin: 0;
   color: var(--text-secondary);
@@ -824,66 +823,6 @@ rt {
 .card-heading-row p {
   margin: 0;
   color: var(--text-secondary);
-}
-
-.vocab-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 14px;
-}
-
-.vocab-item {
-  position: relative;
-}
-
-.vocab-item.is-mastered {
-  opacity: 0.72;
-  border-color: rgba(76, 175, 80, 0.35);
-}
-
-.vocab-item.is-hidden {
-  display: none;
-}
-
-.vocab-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  align-items: center;
-}
-
-.vocab-actions .btn-icon {
-  min-width: 40px;
-  padding: 0.6rem;
-}
-
-.vocab-actions .btn-remove {
-  flex: 1;
-}
-
-.furigana-mode-btn.btn-primary,
-.furigana-mode-btn.btn-secondary {
-  min-width: 78px;
-}
-
-@media (max-width: 768px) {
-  .card-heading-row {
-    flex-direction: column;
-  }
-
-  .reading-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .toolbar-actions {
-    width: 100%;
-  }
-
-  .toolbar-actions .btn-secondary,
-  .toolbar-actions .btn-record,
-  .toolbar-actions .btn-stop {
-    flex: 1 1 100%;
-  }
 }
 
 .highlight-text {
@@ -989,6 +928,10 @@ rt {
   padding: 10px 0;
 }
 
+.vocab-grid--spaced {
+  margin-top: 18px;
+}
+
 .vocab-item {
   display: flex;
   flex-direction: column;
@@ -1047,6 +990,131 @@ rt {
 .btn-remove:hover {
   color: #e91e63;
   background: rgba(233, 30, 99, 0.1);
+}
+
+.vocab-review-panel {
+  margin-top: 18px;
+}
+
+.vocab-review-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.vocab-review-panel__header h3 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.vocab-review-panel__header p,
+.vocab-review-panel__meta {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.vocab-review-panel__body {
+  display: grid;
+  gap: 12px;
+}
+
+.vocab-review-card {
+  perspective: 1000px;
+  min-height: 240px;
+}
+
+.vocab-review-card__inner {
+  position: relative;
+  min-height: 240px;
+  transform-style: preserve-3d;
+  transition: transform 0.4s ease;
+}
+
+.vocab-review-card__face {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  padding: 22px;
+  background: var(--light-bg);
+  border: 2px solid #f8bbd9;
+  backface-visibility: hidden;
+  box-shadow: 0 8px 18px rgba(233, 30, 99, 0.08);
+}
+
+.vocab-review-card__face--back {
+  transform: rotateY(180deg);
+}
+
+.vocab-review-card__label {
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.vocab-review-card__word {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 10px;
+}
+
+.vocab-review-card__meaning {
+  font-size: 1rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.vocab-review-card__hint {
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.vocab-review-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vocab-review-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vocab-review-card[data-flipped="1"] .vocab-review-card__inner {
+  transform: rotateY(180deg);
+}
+
+.vocab-review-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 540px) {
+  .vocab-grid--spaced {
+    margin-top: 14px;
+  }
+
+  .vocab-review-panel__header {
+    flex-direction: column;
+  }
+
+  .vocab-review-card,
+  .vocab-review-card__inner {
+    min-height: 220px;
+  }
+
+  .vocab-review-card__face {
+    padding: 16px;
+  }
+
+  .vocab-review-card__word {
+    font-size: 1.35rem;
+  }
 }
 
 /* Control Section */

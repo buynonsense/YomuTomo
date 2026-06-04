@@ -83,8 +83,8 @@
                 <div class="vocab-word">{{ item.word }}</div>
                 <div class="vocab-meaning">释义：{{ item.meaning }}</div>
                 <div class="vocab-actions">
-                  <button type="button" class="btn-icon" onclick="speakVocabWord(this)" aria-label="朗读生词">🔊</button>
-                  <button type="button" class="btn-remove" onclick="toggleVocabMastered(this)">已掌握</button>
+                  <button type="button" class="btn-icon" data-vocab-action="speak" aria-label="朗读生词">🔊</button>
+                  <button type="button" class="btn-remove" data-vocab-action="toggle-mastered">已掌握</button>
                 </div>
               </div>
               {% endfor %}
@@ -123,6 +123,7 @@
 
     <script src="/static/js/modules/speech-recognition.js"></script>
     <script src="/static/js/modules/text-highlight.js"></script>
+    <script src="/static/js/modules/tts-word-highlighter.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/pages/reading.js"></script>

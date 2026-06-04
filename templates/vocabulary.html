@@ -33,12 +33,51 @@
               <a href="/vocabulary?status=all" class="btn-secondary">全部</a>
               <a href="/vocabulary?status=learning" class="btn-secondary">学习中</a>
               <a href="/vocabulary?status=mastered" class="btn-secondary">已掌握</a>
+              <button type="button" class="btn-secondary" id="vocab-review-entry" aria-controls="vocab-review-panel" aria-expanded="false" {% if not vocab_rows or vocab_rows|length == 0 %}disabled{% endif %}>复习模式</button>
             </div>
           </div>
 
+          <section id="vocab-review-panel" class="vocab-review-panel d-none" aria-hidden="true" aria-modal="true" role="dialog" tabindex="-1">
+            <div class="vocab-review-panel__header">
+              <div>
+                <h3>复习模式</h3>
+                <p>这里会展示当前待复习词条，后续由前端脚本接管翻牌、切换和进度展示。</p>
+              </div>
+              <button type="button" class="btn-secondary" id="vocab-review-close">关闭</button>
+            </div>
+
+            <div class="vocab-review-panel__body">
+              <div class="vocab-review-card" data-review-card data-flipped="0">
+                <div class="vocab-review-card__inner">
+                  <div class="vocab-review-card__face vocab-review-card__face--front">
+                    <div class="vocab-review-card__label">词条</div>
+                    <div class="vocab-review-card__word">等待进入复习</div>
+                    <div class="vocab-review-card__hint">点击后续会切换到释义面</div>
+                  </div>
+                  <div class="vocab-review-card__face vocab-review-card__face--back">
+                    <div class="vocab-review-card__label">释义</div>
+                    <div class="vocab-review-card__meaning">复习面板骨架已就绪</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="vocab-review-panel__controls">
+                <button type="button" class="btn-secondary" id="vocab-review-prev" disabled>上一张</button>
+                <button type="button" class="btn-secondary" id="vocab-review-flip">翻牌</button>
+                <button type="button" class="btn-secondary" id="vocab-review-next" disabled>下一张</button>
+                <button type="button" class="btn-secondary" id="vocab-review-toggle-mastered">标记已掌握</button>
+              </div>
+
+            <div class="vocab-review-panel__meta">
+                <span>进度：<strong data-review-progress>0 / 0</strong></span>
+                <span>当前状态：<strong data-review-state>未开始</strong></span>
+              </div>
+            </div>
+          </section>
+
           {% if vocab_rows and vocab_rows|length > 0 %}
-          <div class="vocab-grid" style="margin-top: 18px;">
-            {% for item in vocab_rows %}
+            <div class="vocab-grid vocab-grid--spaced">
+              {% for item in vocab_rows %}
             <div class="vocab-item {% if item.status == 'mastered' %}is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.status == 'mastered' else 0 }}">
               <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
               <div class="vocab-word">{{ item.word }}</div>
@@ -47,62 +86,22 @@
               <div class="vocab-meaning">来源：{{ item.article_title }}</div>
               {% endif %}
               <div class="vocab-actions">
-                <button type="button" class="btn-icon" onclick="speakVocabWord(this)" aria-label="朗读生词">🔊</button>
-                <button type="button" class="btn-remove" onclick="toggleVocabMastered(this)">{{ '取消掌握' if item.status == 'mastered' else '已掌握' }}</button>
+                <button type="button" class="btn-icon" data-vocab-action="speak" aria-label="朗读生词">🔊</button>
+                <button type="button" class="btn-remove" data-vocab-action="toggle-mastered">{{ '取消掌握' if item.status == 'mastered' else '已掌握' }}</button>
               </div>
             </div>
             {% endfor %}
           </div>
           {% else %}
-          <p style="margin-top: 16px;">还没有任何生词。阅读文章时，AI 提取的词会自动加入这里。</p>
+          <p class="vocab-empty-state">还没有任何生词。阅读文章时，AI 提取的词会自动加入这里。</p>
           {% endif %}
         </section>
       </main>
     </div>
 
+    <script id="vocab-rows-data" type="application/json">{{ vocab_rows | tojson }}</script>
+
     <script src="/static/js/common.js"></script>
-    <script>
-      function speakVocabWord(button) {
-        const item = button.closest('.vocab-item');
-        if (!item || !('speechSynthesis' in window)) return;
-        const text = item.dataset.vocabPronunciation || item.dataset.vocabWord || '';
-        if (!text.trim()) return;
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ja-JP';
-        window.speechSynthesis.speak(utterance);
-      }
-
-      function toggleVocabMastered(button) {
-        const item = button.closest('.vocab-item');
-        if (!item) return;
-        const word = item.dataset.vocabWord || '';
-        const pronunciation = item.dataset.vocabPronunciation || '';
-        const meaning = item.querySelector('.vocab-meaning')?.textContent?.replace(/^释义：/, '') || '';
-        const mastered = item.dataset.vocabMastered !== '1';
-
-        button.disabled = true;
-        fetch('/vocabulary/toggle', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word, pronunciation, meaning, mastered })
-        })
-          .then(async (response) => {
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-              throw new Error(data.error || '保存失败');
-            }
-            item.dataset.vocabMastered = data.mastered ? '1' : '0';
-            item.classList.toggle('is-mastered', data.mastered);
-            button.textContent = data.mastered ? '取消掌握' : '已掌握';
-          })
-          .catch((error) => {
-            alert(error.message);
-          })
-          .finally(() => {
-            button.disabled = false;
-          });
-      }
-    </script>
+    <script src="/static/js/pages/vocabulary.js"></script>
   </body>
 </html>

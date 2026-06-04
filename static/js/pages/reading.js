@@ -6,6 +6,7 @@
 let speechRecognitionManager;
 let textHighlighter;
 let pdfExporter;
+let ttsWordHighlighter;
 
 class ReadingPageController {
   constructor() {
@@ -13,9 +14,15 @@ class ReadingPageController {
     this.state = this.loadState();
     this.sentenceItems = [];
     this.currentSentenceIndex = -1;
+    this.currentWordIndex = -1;
+    this.currentWordTimer = null;
+    this.lastScrolledSentenceIndex = -1;
+    this.playbackSessionId = 0;
+    this.vocabSpeechSessionId = 0;
     this.currentUtterance = null;
     this.speechSupported = 'speechSynthesis' in window;
     this.root = document.body;
+    this.wordHighlighter = null;
   }
 
   init() {
@@ -193,6 +200,28 @@ class ReadingPageController {
         item.classList.add('is-mastered');
       }
     });
+
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const button = target.closest('[data-vocab-action]');
+      if (!button) {
+        return;
+      }
+
+      const action = button.getAttribute('data-vocab-action');
+      if (action === 'speak') {
+        this.speakVocabWord(button);
+        return;
+      }
+
+      if (action === 'toggle-mastered') {
+        this.toggleVocabMastered(button);
+      }
+    });
   }
 
   bindBackToTop() {
@@ -224,25 +253,48 @@ class ReadingPageController {
 
     const originalText = this.originalTextEl.textContent || '';
     const sentences = this.splitSentences(originalText);
-    this.sentenceItems = sentences;
+    this.wordHighlighter = ttsWordHighlighter || (window.TTSWordHighlighter ? new window.TTSWordHighlighter() : null);
+    this.sentenceItems = sentences.map((sentence) => {
+      const built = this.buildSentenceView(sentence);
+      return {
+        text: sentence,
+        html: built.html,
+        wordCount: built.wordCount
+      };
+    });
     this.sentenceListEl.innerHTML = '';
 
-    if (!sentences.length) {
+    if (!this.sentenceItems.length) {
       this.sentenceListEl.innerHTML = '<p class="sentence-empty">没有可播放的句子。</p>';
       return;
     }
 
-    sentences.forEach((sentence, index) => {
+    this.sentenceItems.forEach((sentenceItem, index) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'sentence-item';
       button.dataset.index = String(index);
-      button.textContent = sentence;
+      button.dataset.wordCount = String(sentenceItem.wordCount);
+      button.dataset.wordRanges = JSON.stringify(sentenceItem.wordRanges || []);
+      button.innerHTML = sentenceItem.html;
       button.addEventListener('click', () => {
         this.playSentence(index);
       });
       this.sentenceListEl.appendChild(button);
     });
+  }
+
+  buildSentenceView(sentence) {
+    if (this.wordHighlighter && typeof this.wordHighlighter.buildSentenceMarkup === 'function') {
+      return this.wordHighlighter.buildSentenceMarkup(sentence);
+    }
+
+    const text = (sentence || '').trim();
+    return {
+      html: text,
+      wordCount: text ? 1 : 0,
+      segments: [{ text, isWordLike: Boolean(text) }]
+    };
   }
 
   splitSentences(text) {
@@ -270,31 +322,146 @@ class ReadingPageController {
     }
 
     this.stopSpeech();
-    this.speakSequence(0);
+    this.lastScrolledSentenceIndex = -1;
+    this.startPlaybackSession();
+    this.speakSequence(this.playbackSessionId, 0);
   }
 
-  speakSequence(index) {
+  clearWordTimer() {
+    if (this.currentWordTimer) {
+      window.clearInterval(this.currentWordTimer);
+      this.currentWordTimer = null;
+    }
+  }
+
+  startPlaybackSession() {
+    this.playbackSessionId += 1;
+    return this.playbackSessionId;
+  }
+
+  isActivePlayback(sessionId) {
+    return sessionId === this.playbackSessionId;
+  }
+
+  startWordHighlight(sessionId, sentenceIndex, utterance) {
+    const sentenceItem = this.sentenceItems[sentenceIndex];
+    if (!sentenceItem || sentenceItem.wordCount <= 0) {
+      this.currentWordIndex = -1;
+      this.clearWordTimer();
+      this.syncSentenceHighlight();
+      return;
+    }
+
+    this.clearWordTimer();
+    this.currentWordIndex = 0;
+    this.syncSentenceHighlight();
+
+    const canUseBoundaryEvents = Boolean(utterance && typeof utterance.addEventListener === 'function');
+    let sawBoundaryEvent = false;
+
+    if (canUseBoundaryEvents) {
+      utterance.addEventListener('boundary', (event) => {
+        if (!this.isActivePlayback(sessionId)) {
+          return;
+        }
+
+        if (!event || typeof event.charIndex !== 'number') {
+          return;
+        }
+
+        const wordIndex = ttsWordHighlighter?.findWordIndexAtCharIndex(sentenceItem.wordRanges, event.charIndex) ?? -1;
+        if (wordIndex < 0) {
+          return;
+        }
+
+        sawBoundaryEvent = true;
+        this.clearWordTimer();
+        this.currentWordIndex = wordIndex;
+        this.syncSentenceHighlight();
+      });
+    }
+
+    if (sentenceItem.wordCount === 1) {
+      return;
+    }
+
+    this.currentWordTimer = window.setTimeout(() => {
+      if (!this.isActivePlayback(sessionId) || sawBoundaryEvent) {
+        return;
+      }
+
+      const interval = Math.max(180, Math.round(1200 / sentenceItem.wordCount));
+      this.clearWordTimer();
+      let wordIndex = 0;
+      this.currentWordIndex = 0;
+      this.syncSentenceHighlight();
+
+      this.currentWordTimer = window.setInterval(() => {
+        if (!this.isActivePlayback(sessionId)) {
+          this.clearWordTimer();
+          return;
+        }
+
+        wordIndex += 1;
+        this.currentWordIndex = Math.min(wordIndex, sentenceItem.wordCount - 1);
+        this.syncSentenceHighlight();
+
+        if (wordIndex >= sentenceItem.wordCount - 1) {
+          this.clearWordTimer();
+        }
+      }, interval);
+    }, 80);
+  }
+
+  stopWordHighlight() {
+    this.clearWordTimer();
+    this.currentWordIndex = -1;
+  }
+
+  speakSequence(sessionId, index) {
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
+
     if (index >= this.sentenceItems.length) {
       this.currentSentenceIndex = -1;
+      this.stopWordHighlight();
       this.syncSentenceHighlight();
       this.updateTtsButtons(false);
       return;
     }
 
-    const sentence = this.sentenceItems[index];
+    const sentenceItem = this.sentenceItems[index];
+    const sentence = sentenceItem.text;
     this.currentSentenceIndex = index;
+    this.currentWordIndex = -1;
     this.syncSentenceHighlight();
     this.updateTtsButtons(true);
 
     const utterance = this.createUtterance(sentence);
     utterance.onstart = () => {
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
       this.currentSentenceIndex = index;
+      this.lastScrolledSentenceIndex = -1;
+      this.startWordHighlight(sessionId, index, utterance);
       this.syncSentenceHighlight();
     };
     utterance.onend = () => {
-      this.speakSequence(index + 1);
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
+      this.stopWordHighlight();
+      this.speakSequence(sessionId, index + 1);
     };
     utterance.onerror = (event) => {
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
       console.error('TTS 播放失败', event.error);
       this.stopSpeech();
     };
@@ -309,27 +476,45 @@ class ReadingPageController {
       return;
     }
 
-    const sentence = this.sentenceItems[index];
-    if (!sentence) {
+    const sentenceItem = this.sentenceItems[index];
+    if (!sentenceItem) {
       return;
     }
 
     this.stopSpeech();
+    const sessionId = this.startPlaybackSession();
     this.currentSentenceIndex = index;
+    this.currentWordIndex = -1;
+    this.lastScrolledSentenceIndex = -1;
     this.syncSentenceHighlight();
     this.updateTtsButtons(true);
 
-    const utterance = this.createUtterance(sentence);
+    const utterance = this.createUtterance(sentenceItem.text);
     utterance.onstart = () => {
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
       this.currentSentenceIndex = index;
+      this.lastScrolledSentenceIndex = -1;
+      this.startWordHighlight(sessionId, index, utterance);
       this.syncSentenceHighlight();
     };
     utterance.onend = () => {
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
       this.currentSentenceIndex = -1;
+      this.stopWordHighlight();
       this.syncSentenceHighlight();
       this.updateTtsButtons(false);
     };
     utterance.onerror = (event) => {
+      if (!this.isActivePlayback(sessionId)) {
+        return;
+      }
+
       console.error('单句 TTS 播放失败', event.error);
       this.stopSpeech();
     };
@@ -342,8 +527,12 @@ class ReadingPageController {
     if (this.speechSupported) {
       window.speechSynthesis.cancel();
     }
+    this.playbackSessionId += 1;
+    this.vocabSpeechSessionId += 1;
     this.currentUtterance = null;
     this.currentSentenceIndex = -1;
+    this.stopWordHighlight();
+    this.lastScrolledSentenceIndex = -1;
     this.syncSentenceHighlight();
     this.updateTtsButtons(false);
   }
@@ -362,12 +551,23 @@ class ReadingPageController {
       const index = Number(item.dataset.index);
       item.classList.toggle('is-active', index === this.currentSentenceIndex);
       item.setAttribute('aria-current', index === this.currentSentenceIndex ? 'true' : 'false');
+
+      const words = item.querySelectorAll('.sentence-token--word');
+      words.forEach((wordNode) => {
+        const wordIndex = Number(wordNode.dataset.wordIndex);
+        const isSentenceActive = index === this.currentSentenceIndex;
+        const isCurrentWord = isSentenceActive && this.currentWordIndex === wordIndex;
+        const isPastWord = isSentenceActive && this.currentWordIndex > wordIndex;
+        wordNode.classList.toggle('is-active', isCurrentWord);
+        wordNode.classList.toggle('is-pending', isSentenceActive && (isPastWord || (this.currentWordIndex >= 0 && this.currentWordIndex < wordIndex)));
+      });
     });
 
-    if (this.currentSentenceIndex >= 0) {
+    if (this.currentSentenceIndex >= 0 && this.currentSentenceIndex !== this.lastScrolledSentenceIndex) {
       const activeItem = document.querySelector(`.sentence-item[data-index="${this.currentSentenceIndex}"]`);
       if (activeItem) {
         activeItem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        this.lastScrolledSentenceIndex = this.currentSentenceIndex;
       }
     }
   }
@@ -406,9 +606,14 @@ class ReadingPageController {
     }
 
     this.stopSpeech();
+    const sessionId = ++this.vocabSpeechSessionId;
     const utterance = this.createUtterance(text);
     this.currentUtterance = utterance;
     utterance.onend = () => {
+      if (sessionId !== this.vocabSpeechSessionId) {
+        return;
+      }
+
       this.currentUtterance = null;
     };
     window.speechSynthesis.speak(utterance);
@@ -535,6 +740,7 @@ document.addEventListener('DOMContentLoaded', function () {
   try {
     speechRecognitionManager = new SpeechRecognitionManager();
     textHighlighter = new TextHighlighter();
+    ttsWordHighlighter = new TTSWordHighlighter();
     pdfExporter = new PDFExporter();
 
     const originalText = document.getElementById('original-text')?.textContent || '';
@@ -548,10 +754,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const controller = new ReadingPageController();
     controller.init();
-
-    window.speakVocabWord = controller.speakVocabWord.bind(controller);
-    window.toggleVocabMastered = controller.toggleVocabMastered.bind(controller);
-    window.stopReadingSpeech = controller.stopSpeech.bind(controller);
   } catch (error) {
     console.error('阅读页初始化失败', error);
   }
