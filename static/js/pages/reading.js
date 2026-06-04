@@ -38,6 +38,7 @@ class ReadingPageController {
     this.ttsPlayBtn = document.getElementById('tts-play-btn');
     this.ttsStopBtn = document.getElementById('tts-stop-btn');
     this.toggleMasteredBtn = document.getElementById('toggle-mastered-btn');
+    this.articleId = document.getElementById('article-id')?.textContent?.trim() || '';
     this.resultDiv = document.getElementById('result');
     this.highlightTextEl = document.getElementById('highlight-text');
     this.originalTextEl = document.getElementById('original-text');
@@ -52,22 +53,19 @@ class ReadingPageController {
       if (!raw) {
         return {
           furiganaMode: 'show',
-          hideMastered: false,
-          masteredWords: []
+          hideMastered: false
         };
       }
       const parsed = JSON.parse(raw);
       return {
         furiganaMode: parsed.furiganaMode || 'show',
-        hideMastered: Boolean(parsed.hideMastered),
-        masteredWords: Array.isArray(parsed.masteredWords) ? parsed.masteredWords : []
+        hideMastered: Boolean(parsed.hideMastered)
       };
     } catch (error) {
       console.warn('读取阅读页状态失败', error);
       return {
         furiganaMode: 'show',
-        hideMastered: false,
-        masteredWords: []
+        hideMastered: false
       };
     }
   }
@@ -191,8 +189,7 @@ class ReadingPageController {
     }
 
     document.querySelectorAll('.vocab-item').forEach((item) => {
-      const word = item.dataset.vocabWord || '';
-      if (word && this.state.masteredWords.includes(word)) {
+      if (item.dataset.vocabMastered === '1') {
         item.classList.add('is-mastered');
       }
     });
@@ -290,6 +287,10 @@ class ReadingPageController {
     this.updateTtsButtons(true);
 
     const utterance = this.createUtterance(sentence);
+    utterance.onstart = () => {
+      this.currentSentenceIndex = index;
+      this.syncSentenceHighlight();
+    };
     utterance.onend = () => {
       this.speakSequence(index + 1);
     };
@@ -319,6 +320,10 @@ class ReadingPageController {
     this.updateTtsButtons(true);
 
     const utterance = this.createUtterance(sentence);
+    utterance.onstart = () => {
+      this.currentSentenceIndex = index;
+      this.syncSentenceHighlight();
+    };
     utterance.onend = () => {
       this.currentSentenceIndex = -1;
       this.syncSentenceHighlight();
@@ -356,7 +361,15 @@ class ReadingPageController {
     document.querySelectorAll('.sentence-item').forEach((item) => {
       const index = Number(item.dataset.index);
       item.classList.toggle('is-active', index === this.currentSentenceIndex);
+      item.setAttribute('aria-current', index === this.currentSentenceIndex ? 'true' : 'false');
     });
+
+    if (this.currentSentenceIndex >= 0) {
+      const activeItem = document.querySelector(`.sentence-item[data-index="${this.currentSentenceIndex}"]`);
+      if (activeItem) {
+        activeItem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
   }
 
   updateTtsButtons(isPlaying) {
@@ -412,23 +425,44 @@ class ReadingPageController {
       return;
     }
 
-    const isMastered = this.state.masteredWords.includes(word);
-    if (isMastered) {
-      this.state.masteredWords = this.state.masteredWords.filter((entry) => entry !== word);
-      item.classList.remove('is-mastered');
-    } else {
-      this.state.masteredWords.push(word);
-      item.classList.add('is-mastered');
-    }
+    const pronunciation = item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '';
+    const meaning = item.querySelector('.vocab-meaning')?.textContent || '';
+    const mastered = item.dataset.vocabMastered !== '1';
 
-    this.refreshVocabView();
-    this.saveState();
+    button.disabled = true;
+    this.persistVocabularyStatus({ word, pronunciation, meaning, mastered, article_id: this.articleId ? Number(this.articleId) : null })
+      .then((data) => {
+        item.dataset.vocabMastered = data.mastered ? '1' : '0';
+        this.refreshVocabView();
+      })
+      .catch((error) => {
+        console.error('保存生词状态失败', error);
+        if (this.resultDiv) {
+          this.resultDiv.innerHTML = `<p style="color: var(--danger-color);">保存生词状态失败：${error.message}</p>`;
+        }
+      })
+      .finally(() => {
+        button.disabled = false;
+      });
+  }
+
+  persistVocabularyStatus(payload) {
+    return fetch('/vocabulary/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || '保存失败');
+      }
+      return data;
+    });
   }
 
   refreshVocabView() {
     document.querySelectorAll('.vocab-item').forEach((item) => {
-      const word = item.dataset.vocabWord || '';
-      const isMastered = this.state.masteredWords.includes(word);
+      const isMastered = item.dataset.vocabMastered === '1';
       item.classList.toggle('is-mastered', isMastered);
       item.classList.toggle('is-hidden', this.state.hideMastered && isMastered);
       const button = item.querySelector('.btn-remove');
@@ -481,7 +515,9 @@ class ReadingPageController {
         vocab: Array.from(document.querySelectorAll('.vocab-item')).map((item) => ({
           word: item.dataset.vocabWord || item.querySelector('.vocab-word')?.textContent || '',
           pronunciation: item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '',
-          meaning: item.querySelector('.vocab-meaning')?.textContent || ''
+          meaning: item.querySelector('.vocab-meaning')?.textContent || '',
+          mastered: item.dataset.vocabMastered === '1',
+          article_id: this.articleId ? Number(this.articleId) : null
         })),
         ts: Date.now()
       };

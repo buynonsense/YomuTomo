@@ -22,6 +22,7 @@
     <div class="container">
       <nav class="nav-bar">
         <a href="/" class="nav-button">🏠 回到首页</a>
+        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
       </nav>
 
       <header class="page-header">
@@ -44,6 +45,7 @@
             <div id="original-text">{{ original }}</div>
             <div id="ruby-text-data">{{ ruby_text | safe }}</div>
             <div id="lesson-title" style="display:none;">{{ title }}</div>
+            <div id="article-id" style="display:none;">{{ article_id }}</div>
             <div id="session-id" style="display:none;">{{ session_id }}</div>
           </div>
           <div class="text-content">
@@ -76,7 +78,7 @@
           <div class="vocab-container">
             <div id="vocab-grid" class="vocab-grid">
               {% for item in vocab %}
-              <div class="vocab-item" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}">
+              <div class="vocab-item" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.mastered else 0 }}">
                 <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
                 <div class="vocab-word">{{ item.word }}</div>
                 <div class="vocab-meaning">释义：{{ item.meaning }}</div>

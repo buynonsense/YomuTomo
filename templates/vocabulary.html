@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YomuTomo-我的生词本</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="alternate icon" href="/static/favicon.ico" />
+    <link rel="stylesheet" href="/static/css/main.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav-bar">
+        {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
+        <a href="/" class="nav-button">🏠 首页</a>
+        <a href="/dashboard" class="nav-button">📚 我的文章</a>
+        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
+      </nav>
+
+      <header class="page-header">
+        <h1>📒 我的生词本</h1>
+        <p>来自文章的词条会自动入库，后续可继续扩展复习和掌握训练。</p>
+      </header>
+
+      <main class="main-content">
+        <section class="card">
+          <div class="card-heading-row">
+            <div>
+              <h2>词条统计</h2>
+              <p>总计 {{ total_count }} 条，已掌握 {{ mastered_count }} 条，学习中 {{ learning_count }} 条。</p>
+            </div>
+            <div class="toolbar-actions">
+              <a href="/vocabulary?status=all" class="btn-secondary">全部</a>
+              <a href="/vocabulary?status=learning" class="btn-secondary">学习中</a>
+              <a href="/vocabulary?status=mastered" class="btn-secondary">已掌握</a>
+            </div>
+          </div>
+
+          {% if vocab_rows and vocab_rows|length > 0 %}
+          <div class="vocab-grid" style="margin-top: 18px;">
+            {% for item in vocab_rows %}
+            <div class="vocab-item {% if item.status == 'mastered' %}is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.status == 'mastered' else 0 }}">
+              <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
+              <div class="vocab-word">{{ item.word }}</div>
+              <div class="vocab-meaning">释义：{{ item.meaning }}</div>
+              {% if item.article_title %}
+              <div class="vocab-meaning">来源：{{ item.article_title }}</div>
+              {% endif %}
+              <div class="vocab-actions">
+                <button type="button" class="btn-icon" onclick="speakVocabWord(this)" aria-label="朗读生词">🔊</button>
+                <button type="button" class="btn-remove" onclick="toggleVocabMastered(this)">{{ '取消掌握' if item.status == 'mastered' else '已掌握' }}</button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p style="margin-top: 16px;">还没有任何生词。阅读文章时，AI 提取的词会自动加入这里。</p>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/js/common.js"></script>
+    <script>
+      function speakVocabWord(button) {
+        const item = button.closest('.vocab-item');
+        if (!item || !('speechSynthesis' in window)) return;
+        const text = item.dataset.vocabPronunciation || item.dataset.vocabWord || '';
+        if (!text.trim()) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function toggleVocabMastered(button) {
+        const item = button.closest('.vocab-item');
+        if (!item) return;
+        const word = item.dataset.vocabWord || '';
+        const pronunciation = item.dataset.vocabPronunciation || '';
+        const meaning = item.querySelector('.vocab-meaning')?.textContent?.replace(/^释义：/, '') || '';
+        const mastered = item.dataset.vocabMastered !== '1';
+
+        button.disabled = true;
+        fetch('/vocabulary/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word, pronunciation, meaning, mastered })
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(data.error || '保存失败');
+            }
+            item.dataset.vocabMastered = data.mastered ? '1' : '0';
+            item.classList.toggle('is-mastered', data.mastered);
+            button.textContent = data.mastered ? '取消掌握' : '已掌握';
+          })
+          .catch((error) => {
+            alert(error.message);
+          })
+          .finally(() => {
+            button.disabled = false;
+          });
+      }
+    </script>
+  </body>
+</html>

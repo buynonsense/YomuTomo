@@ -9,6 +9,7 @@ from app.model.models import User, Article
 from app.services.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content, log_with_time
 from app.services.ai_client_async import AIClient, AIClientError
 from app.core.config import settings
+from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
 
 router = APIRouter(prefix="", tags=["文章"])
 
@@ -174,6 +175,14 @@ async def process_text_async(
         db.add(article)
         db.commit()
         db.refresh(article)
+
+        try:
+            seed_vocabulary_entries(db, user.id, article.id, vocab)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            log_with_time(f"[VOCAB] seed entries failed article_id={article.id}: {e}", level="ERROR")
+
         return {"redirect_url": f"/articles/{article.id}"}
 
     # 返回处理结果
@@ -196,12 +205,14 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
     article.updated_at = datetime.utcnow()
     db.commit()
     vocab = json.loads(article.vocab_json)
+    vocab = attach_vocab_state(db, user.id, vocab)
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
         "reading.html",
         {
             "request": request,
+            "article_id": article.id,
             "original": article.original,
             "ruby_text": article.ruby_html,
             "vocab": vocab,
@@ -210,6 +221,73 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
             "source_url": article.source_url,
         },
     )
+
+
+@router.get("/vocabulary", response_class=HTMLResponse, summary="我的生词本")
+async def vocabulary_book(request: Request, status: str = Query(None, description="筛选状态"), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    vocab_rows = build_vocabulary_view_rows(db, user.id, status=status)
+    mastered_count = sum(1 for row in vocab_rows if row['status'] == 'mastered')
+    learning_count = sum(1 for row in vocab_rows if row['status'] == 'learning')
+
+    from fastapi.templating import Jinja2Templates
+    templates = Jinja2Templates(directory="templates")
+    return templates.TemplateResponse(
+        "vocabulary.html",
+        {
+            "request": request,
+            "user": user,
+            "vocab_rows": vocab_rows,
+            "status": status or "all",
+            "mastered_count": mastered_count,
+            "learning_count": learning_count,
+            "total_count": len(vocab_rows),
+        },
+    )
+
+
+@router.post("/vocabulary/toggle", summary="切换生词状态")
+async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "error": "未登录"}
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"success": False, "error": "请求体格式不正确"}
+
+    word = payload.get('word', '')
+    pronunciation = payload.get('pronunciation')
+    meaning = payload.get('meaning')
+    mastered = bool(payload.get('mastered', True))
+    article_id = payload.get('article_id')
+
+    try:
+        entry = toggle_vocabulary_status(
+            db,
+            user_id=user.id,
+            word=word,
+            pronunciation=pronunciation,
+            meaning=meaning,
+            mastered=mastered,
+            article_id=article_id,
+        )
+        return {
+            "success": True,
+            "word": entry.word,
+            "status": entry.status,
+            "mastered": entry.status == 'mastered',
+        }
+    except ValueError as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": f"保存失败: {str(e)}"}
 
 
 @router.post("/articles/{article_id}/delete", summary="删除文章")
@@ -403,5 +481,3 @@ async def update_user_level(request: Request, db: Session = Depends(get_db)):
         return {"error": "等级格式不正确"}
     except Exception as e:
         return {"error": f"更新失败: {str(e)}"}
-
-

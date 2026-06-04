@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db import Base
 
@@ -18,6 +18,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     articles = relationship("Article", back_populates="user", cascade="all, delete-orphan")
+    vocabulary_entries = relationship("VocabularyEntry", back_populates="user", cascade="all, delete-orphan")
 
 
 class Article(Base):
@@ -36,6 +37,28 @@ class Article(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="articles")
+    vocabulary_entries = relationship("VocabularyEntry", back_populates="article", cascade="all, delete-orphan")
+
+
+class VocabularyEntry(Base):
+    __tablename__ = "vocabulary_entries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "word", name="uq_vocabulary_entries_user_word"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), nullable=True, index=True)
+    word = Column(String(255), nullable=False)
+    pronunciation = Column(String(255), nullable=True)
+    meaning = Column(Text, nullable=True)
+    status = Column(String(50), default="learning", nullable=False)  # learning, mastered
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    mastered_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="vocabulary_entries")
+    article = relationship("Article", back_populates="vocabulary_entries")
 
 
 class CrawlTask(Base):
@@ -50,5 +73,4 @@ class CrawlTask(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User")
-
 
