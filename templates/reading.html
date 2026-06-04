@@ -13,7 +13,7 @@
   </head>
   <body>
     <!-- 回到顶部按钮 -->
-    <button id="back-to-top" class="back-to-top-btn" title="回到顶部">
+    <button id="back-to-top" class="back-to-top-btn" title="回到顶部" type="button">
       <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2L13.5 7H19L14.5 10.5L16 15.5L12 12.5L8 15.5L9.5 10.5L5 7H10.5L12 2Z" fill="currentColor"/>
         <path d="M10 19L12 16L14 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -56,21 +56,34 @@
               <div class="translation-text">{{ translation }}</div>
             </div>
           </div>
+          <div class="sentence-playback-panel">
+            <div class="sentence-playback-header">
+              <h3>🎧 句子播放</h3>
+              <p>点击句子即可单句朗读，支持全文顺序播放。</p>
+            </div>
+            <div id="sentence-list" class="sentence-list" aria-live="polite"></div>
+          </div>
         </section>
 
         <section class="card vocab-card">
-          <h2>📚 生词列表</h2>
-          <p>AI提取的可能困难词语，点击可删除已熟悉的词</p>
+          <div class="card-heading-row">
+            <div>
+              <h2>📚 生词列表</h2>
+              <p>AI提取的可能困难词语，可以朗读，也可以标记为已掌握。</p>
+            </div>
+            <button id="toggle-mastered-btn" class="btn-secondary" type="button">隐藏已掌握</button>
+          </div>
           <div class="vocab-container">
             <div id="vocab-grid" class="vocab-grid">
               {% for item in vocab %}
-              <div class="vocab-item">
+              <div class="vocab-item" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}">
                 <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
                 <div class="vocab-word">{{ item.word }}</div>
                 <div class="vocab-meaning">释义：{{ item.meaning }}</div>
-                <button onclick="removeWord(this)" class="btn-remove">
-                  ❌
-                </button>
+                <div class="vocab-actions">
+                  <button type="button" class="btn-icon" onclick="speakVocabWord(this)" aria-label="朗读生词">🔊</button>
+                  <button type="button" class="btn-remove" onclick="toggleVocabMastered(this)">已掌握</button>
+                </div>
               </div>
               {% endfor %}
             </div>
@@ -79,10 +92,27 @@
 
         <section class="card control-card">
           <h2>🎙️ 语音练习</h2>
+          <div class="reading-toolbar">
+            <div class="toolbar-group">
+              <span class="toolbar-label">假名显示</span>
+              <div class="toolbar-actions">
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="show">显示</button>
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hover">悬停</button>
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hide">隐藏</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <span class="toolbar-label">全文朗读</span>
+              <div class="toolbar-actions">
+                <button id="tts-play-btn" class="btn-record" type="button">🔈 播放全文</button>
+                <button id="tts-stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止朗读</button>
+              </div>
+            </div>
+          </div>
           <div class="control-buttons">
-            <button id="record-btn" class="btn-record">▶️ 开始录音</button>
-            <button id="stop-btn" class="btn-stop" disabled>⏹️ 停止录音</button>
-            <button id="export-pdf-btn" class="btn-export">📄 导出PDF</button>
+            <button id="record-btn" class="btn-record" type="button">▶️ 开始录音</button>
+            <button id="stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止录音</button>
+            <button id="export-pdf-btn" class="btn-export" type="button">📄 导出PDF</button>
           </div>
           <div id="result" class="result-display"></div>
         </section>

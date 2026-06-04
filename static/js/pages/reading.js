@@ -1,222 +1,522 @@
 /**
  * Reading Page JavaScript
- * 阅读页面专用JavaScript
+ * 阅读页面专用 JavaScript
  */
 
-// Initialize modules
 let speechRecognitionManager;
 let textHighlighter;
 let pdfExporter;
 
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function () {
-  // Initialize necessary modules
-  speechRecognitionManager = new SpeechRecognitionManager();
-  textHighlighter = new TextHighlighter();
-  pdfExporter = new PDFExporter();
+class ReadingPageController {
+  constructor() {
+    this.storageKey = 'yomu-reading-state';
+    this.state = this.loadState();
+    this.sentenceItems = [];
+    this.currentSentenceIndex = -1;
+    this.currentUtterance = null;
+    this.speechSupported = 'speechSynthesis' in window;
+    this.root = document.body;
+  }
 
-    // Initialize text highlighter content from DOM so highlightText() has data
+  init() {
+    this.cacheDom();
+    this.bindSpeechRecognition();
+    this.bindPdfExport();
+    this.bindFuriganaMode();
+    this.bindTtsControls();
+    this.bindVocabControls();
+    this.bindBackToTop();
+    this.restoreState();
+    this.renderSentences();
+    this.refreshVocabView();
+    this.cacheContent();
+  }
+
+  cacheDom() {
+    this.recordBtn = document.getElementById('record-btn');
+    this.stopBtn = document.getElementById('stop-btn');
+    this.ttsPlayBtn = document.getElementById('tts-play-btn');
+    this.ttsStopBtn = document.getElementById('tts-stop-btn');
+    this.toggleMasteredBtn = document.getElementById('toggle-mastered-btn');
+    this.resultDiv = document.getElementById('result');
+    this.highlightTextEl = document.getElementById('highlight-text');
+    this.originalTextEl = document.getElementById('original-text');
+    this.rubyTextEl = document.getElementById('ruby-text-data');
+    this.sentenceListEl = document.getElementById('sentence-list');
+    this.vocabGridEl = document.getElementById('vocab-grid');
+  }
+
+  loadState() {
     try {
-        const originalText = document.getElementById('original-text')?.textContent || '';
-        const rubyText = document.getElementById('ruby-text-data')?.innerHTML || '';
-        textHighlighter.setContent(originalText, rubyText);
-        const highlightEl = document.getElementById('highlight-text');
-        if (highlightEl) highlightEl.innerHTML = rubyText;
-    } catch (e) {
-        console.error('初始化高亮文本失败', e);
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) {
+        return {
+          furiganaMode: 'show',
+          hideMastered: false,
+          masteredWords: []
+        };
+      }
+      const parsed = JSON.parse(raw);
+      return {
+        furiganaMode: parsed.furiganaMode || 'show',
+        hideMastered: Boolean(parsed.hideMastered),
+        masteredWords: Array.isArray(parsed.masteredWords) ? parsed.masteredWords : []
+      };
+    } catch (error) {
+      console.warn('读取阅读页状态失败', error);
+      return {
+        furiganaMode: 'show',
+        hideMastered: false,
+        masteredWords: []
+      };
+    }
+  }
+
+  saveState() {
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+    } catch (error) {
+      console.warn('保存阅读页状态失败', error);
+    }
+  }
+
+  restoreState() {
+    this.applyFuriganaMode(this.state.furiganaMode);
+    this.updateToggleMasteredButton();
+  }
+
+  bindSpeechRecognition() {
+    if (!speechRecognitionManager || !speechRecognitionManager.isInitialized) {
+      return;
     }
 
-  // Setup speech recognition
-  setupSpeechRecognition();
-
-  // Setup PDF export
-  setupPDFExport();
-
-  // Setup floating labels
-  setupFloatingLabels();
-
-  // Setup back to top button
-  setupBackToTop();
-
-  // Cache content
-  setTimeout(cacheContent, 800);
-});
-
-function setupSpeechRecognition() {
-    if (!speechRecognitionManager.isInitialized) return;
-
-    const recordBtn = document.getElementById('record-btn');
-    const stopBtn = document.getElementById('stop-btn');
-
-    if (recordBtn) {
-        recordBtn.addEventListener('click', () => {
-            speechRecognitionManager.clearTranscript();
-            speechRecognitionManager.startRecording();
-        });
+    if (this.recordBtn) {
+      this.recordBtn.addEventListener('click', () => {
+        speechRecognitionManager.clearTranscript();
+        speechRecognitionManager.startRecording();
+      });
     }
 
-    if (stopBtn) {
-        stopBtn.addEventListener('click', () => {
-            speechRecognitionManager.stopRecording();
-        });
+    if (this.stopBtn) {
+      this.stopBtn.addEventListener('click', () => {
+        speechRecognitionManager.stopRecording();
+      });
     }
 
-    // Setup event handlers
     speechRecognitionManager.onResult((final, interim) => {
-        // Update result display
-        const resultDiv = document.getElementById('result');
-        if (resultDiv) {
-            resultDiv.innerHTML = `
-                <p><strong>识别文本：</strong>${final}<span style="color: var(--text-secondary); font-style: italic;">${interim}</span></p>
-            `;
-        }
+      if (this.resultDiv) {
+        this.resultDiv.innerHTML = `
+          <p><strong>识别文本：</strong>${final}<span style="color: var(--text-secondary); font-style: italic;">${interim}</span></p>
+        `;
+      }
 
-        // Highlight matching text
-        if (final) {
-            textHighlighter.highlightText(final);
-        }
+      if (final) {
+        textHighlighter.highlightText(final);
+      }
     });
 
     speechRecognitionManager.onError((error) => {
-        console.error('语音识别错误:', error);
-        const resultDiv = document.getElementById('result');
-        if (resultDiv) {
-            resultDiv.innerHTML = `<p style="color: var(--danger-color);">语音识别错误: ${error}</p>`;
-        }
+      console.error('语音识别错误:', error);
+      if (this.resultDiv) {
+        this.resultDiv.innerHTML = `<p style="color: var(--danger-color);">语音识别错误: ${error}</p>`;
+      }
     });
 
     speechRecognitionManager.onEnd((finalTranscript) => {
-        if (finalTranscript) {
-            // Send to backend for evaluation
-            evaluateSpeech(finalTranscript);
-        }
+      if (finalTranscript) {
+        this.evaluateSpeech(finalTranscript);
+      }
     });
-}
+  }
 
-function setupPDFExport() {
-    // Bind PDF export
+  bindPdfExport() {
     const exportBtn = document.getElementById('export-pdf-btn');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
-            pdfExporter.exportToPDF();
-        });
+    if (!exportBtn) {
+      return;
     }
-}
-
-function setupFloatingLabels() {
-    // Floating label support
-    function refreshFloating() {
-        document.querySelectorAll('.input-group').forEach(group => {
-            const field = group.querySelector('input, textarea, select');
-            const label = group.querySelector('label');
-            if (!field || !label) return;
-            if (field.value && field.value.trim() !== '') {
-                label.classList.add('force-float');
-            } else {
-                label.classList.remove('force-float');
-            }
-        });
-    }
-
-    document.addEventListener('input', e => {
-        if (e.target.matches('.input-group input, .input-group textarea, .input-group select')) {
-            refreshFloating();
-        }
+    exportBtn.addEventListener('click', () => {
+      if (pdfExporter) {
+        pdfExporter.exportToPDF();
+      }
     });
-    refreshFloating();
-}
+  }
 
-function setupBackToTop() {
-    const backToTopBtn = document.getElementById('back-to-top');
+  bindFuriganaMode() {
+    const buttons = document.querySelectorAll('.furigana-mode-btn');
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.furiganaMode || 'show';
+        this.applyFuriganaMode(mode);
+        this.state.furiganaMode = mode;
+        this.saveState();
+      });
+    });
+  }
 
-    if (backToTopBtn) {
-        // Show/hide button based on scroll position
-        window.addEventListener('scroll', function() {
-            if (window.pageYOffset > 300) {
-                backToTopBtn.classList.add('visible');
-            } else {
-                backToTopBtn.classList.remove('visible');
-            }
-        });
+  applyFuriganaMode(mode) {
+    const normalized = ['show', 'hover', 'hide'].includes(mode) ? mode : 'show';
+    this.state.furiganaMode = normalized;
+    this.root.dataset.furiganaMode = normalized;
+    this.root.classList.remove('furigana-mode-show', 'furigana-mode-hover', 'furigana-mode-hide');
+    this.root.classList.add(`furigana-mode-${normalized}`);
 
-        // Scroll to top when clicked
-        backToTopBtn.addEventListener('click', function() {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        });
+    document.querySelectorAll('.furigana-mode-btn').forEach((button) => {
+      button.classList.toggle('btn-primary', button.dataset.furiganaMode === normalized);
+      button.classList.toggle('btn-secondary', button.dataset.furiganaMode !== normalized);
+    });
+  }
+
+  bindTtsControls() {
+    if (this.ttsPlayBtn) {
+      this.ttsPlayBtn.addEventListener('click', () => {
+        this.playAllSentences();
+      });
     }
-}
 
-function evaluateSpeech(recognizedText) {
-    const resultDiv = document.getElementById('result');
-    const config = { model: '' }; // Default model
+    if (this.ttsStopBtn) {
+      this.ttsStopBtn.addEventListener('click', () => {
+        this.stopSpeech();
+      });
+    }
+  }
 
-    // Get original text from hidden element
-    const originalTextElement = document.getElementById('original-text');
-    const originalText = originalTextElement ? originalTextElement.textContent : '';
+  bindVocabControls() {
+    if (this.toggleMasteredBtn) {
+      this.toggleMasteredBtn.addEventListener('click', () => {
+        this.state.hideMastered = !this.state.hideMastered;
+        this.updateToggleMasteredButton();
+        this.refreshVocabView();
+        this.saveState();
+      });
+    }
+
+    document.querySelectorAll('.vocab-item').forEach((item) => {
+      const word = item.dataset.vocabWord || '';
+      if (word && this.state.masteredWords.includes(word)) {
+        item.classList.add('is-mastered');
+      }
+    });
+  }
+
+  bindBackToTop() {
+    const backToTopBtn = document.getElementById('back-to-top');
+    if (!backToTopBtn) {
+      return;
+    }
+
+    window.addEventListener('scroll', () => {
+      if (window.pageYOffset > 300) {
+        backToTopBtn.classList.add('visible');
+      } else {
+        backToTopBtn.classList.remove('visible');
+      }
+    });
+
+    backToTopBtn.addEventListener('click', () => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    });
+  }
+
+  renderSentences() {
+    if (!this.sentenceListEl || !this.originalTextEl) {
+      return;
+    }
+
+    const originalText = this.originalTextEl.textContent || '';
+    const sentences = this.splitSentences(originalText);
+    this.sentenceItems = sentences;
+    this.sentenceListEl.innerHTML = '';
+
+    if (!sentences.length) {
+      this.sentenceListEl.innerHTML = '<p class="sentence-empty">没有可播放的句子。</p>';
+      return;
+    }
+
+    sentences.forEach((sentence, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sentence-item';
+      button.dataset.index = String(index);
+      button.textContent = sentence;
+      button.addEventListener('click', () => {
+        this.playSentence(index);
+      });
+      this.sentenceListEl.appendChild(button);
+    });
+  }
+
+  splitSentences(text) {
+    const normalized = (text || '').replace(/\r\n/g, '\n').trim();
+    if (!normalized) {
+      return [];
+    }
+
+    const parts = normalized
+      .split(/(?<=[。！？!?])\s*|\n+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    return parts.length ? parts : [normalized];
+  }
+
+  playAllSentences() {
+    if (!this.speechSupported) {
+      this.showSpeechUnsupported();
+      return;
+    }
+
+    if (!this.sentenceItems.length) {
+      return;
+    }
+
+    this.stopSpeech();
+    this.speakSequence(0);
+  }
+
+  speakSequence(index) {
+    if (index >= this.sentenceItems.length) {
+      this.currentSentenceIndex = -1;
+      this.syncSentenceHighlight();
+      this.updateTtsButtons(false);
+      return;
+    }
+
+    const sentence = this.sentenceItems[index];
+    this.currentSentenceIndex = index;
+    this.syncSentenceHighlight();
+    this.updateTtsButtons(true);
+
+    const utterance = this.createUtterance(sentence);
+    utterance.onend = () => {
+      this.speakSequence(index + 1);
+    };
+    utterance.onerror = (event) => {
+      console.error('TTS 播放失败', event.error);
+      this.stopSpeech();
+    };
+
+    this.currentUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  playSentence(index) {
+    if (!this.speechSupported) {
+      this.showSpeechUnsupported();
+      return;
+    }
+
+    const sentence = this.sentenceItems[index];
+    if (!sentence) {
+      return;
+    }
+
+    this.stopSpeech();
+    this.currentSentenceIndex = index;
+    this.syncSentenceHighlight();
+    this.updateTtsButtons(true);
+
+    const utterance = this.createUtterance(sentence);
+    utterance.onend = () => {
+      this.currentSentenceIndex = -1;
+      this.syncSentenceHighlight();
+      this.updateTtsButtons(false);
+    };
+    utterance.onerror = (event) => {
+      console.error('单句 TTS 播放失败', event.error);
+      this.stopSpeech();
+    };
+
+    this.currentUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  stopSpeech() {
+    if (this.speechSupported) {
+      window.speechSynthesis.cancel();
+    }
+    this.currentUtterance = null;
+    this.currentSentenceIndex = -1;
+    this.syncSentenceHighlight();
+    this.updateTtsButtons(false);
+  }
+
+  createUtterance(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ja-JP';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    return utterance;
+  }
+
+  syncSentenceHighlight() {
+    document.querySelectorAll('.sentence-item').forEach((item) => {
+      const index = Number(item.dataset.index);
+      item.classList.toggle('is-active', index === this.currentSentenceIndex);
+    });
+  }
+
+  updateTtsButtons(isPlaying) {
+    if (this.ttsPlayBtn) {
+      this.ttsPlayBtn.disabled = isPlaying;
+    }
+    if (this.ttsStopBtn) {
+      this.ttsStopBtn.disabled = !isPlaying;
+    }
+  }
+
+  showSpeechUnsupported() {
+    if (this.resultDiv) {
+      this.resultDiv.innerHTML = '<p style="color: var(--warning-color);">当前浏览器不支持网页语音播放。</p>';
+    }
+  }
+
+  speakVocabWord(button) {
+    if (!this.speechSupported) {
+      this.showSpeechUnsupported();
+      return;
+    }
+
+    const item = button.closest('.vocab-item');
+    if (!item) {
+      return;
+    }
+
+    const pronunciation = item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '';
+    const word = item.dataset.vocabWord || item.querySelector('.vocab-word')?.textContent || '';
+    const text = pronunciation || word;
+    if (!text.trim()) {
+      return;
+    }
+
+    this.stopSpeech();
+    const utterance = this.createUtterance(text);
+    this.currentUtterance = utterance;
+    utterance.onend = () => {
+      this.currentUtterance = null;
+    };
+    window.speechSynthesis.speak(utterance);
+  }
+
+  toggleVocabMastered(button) {
+    const item = button.closest('.vocab-item');
+    if (!item) {
+      return;
+    }
+
+    const word = item.dataset.vocabWord || '';
+    if (!word) {
+      return;
+    }
+
+    const isMastered = this.state.masteredWords.includes(word);
+    if (isMastered) {
+      this.state.masteredWords = this.state.masteredWords.filter((entry) => entry !== word);
+      item.classList.remove('is-mastered');
+    } else {
+      this.state.masteredWords.push(word);
+      item.classList.add('is-mastered');
+    }
+
+    this.refreshVocabView();
+    this.saveState();
+  }
+
+  refreshVocabView() {
+    document.querySelectorAll('.vocab-item').forEach((item) => {
+      const word = item.dataset.vocabWord || '';
+      const isMastered = this.state.masteredWords.includes(word);
+      item.classList.toggle('is-mastered', isMastered);
+      item.classList.toggle('is-hidden', this.state.hideMastered && isMastered);
+      const button = item.querySelector('.btn-remove');
+      if (button) {
+        button.textContent = isMastered ? '取消掌握' : '已掌握';
+      }
+    });
+  }
+
+  updateToggleMasteredButton() {
+    if (!this.toggleMasteredBtn) {
+      return;
+    }
+    this.toggleMasteredBtn.textContent = this.state.hideMastered ? '显示已掌握' : '隐藏已掌握';
+  }
+
+  evaluateSpeech(recognizedText) {
+    if (!this.resultDiv || !this.originalTextEl) {
+      return;
+    }
+
+    const originalText = this.originalTextEl.textContent || '';
 
     fetch('/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            original: originalText,
-            recognized: recognizedText
-        })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        original: originalText,
+        recognized: recognizedText
+      })
     })
-        .then(response => response.json())
-        .then(data => {
-            if (resultDiv) {
-                const scoreColor = data.score >= 80 ? 'var(--success-color)' : data.score >= 60 ? 'var(--warning-color)' : 'var(--danger-color)';
-                resultDiv.innerHTML += `<p><strong>评分：</strong><span style="color: ${scoreColor}; font-size: 1.2em;">${data.score}/100</span></p>`;
-            }
-        })
-        .catch(error => {
-            console.error('评测错误:', error);
-            if (resultDiv) {
-                resultDiv.innerHTML += `<p style="color: var(--danger-color);">评测失败，请重试</p>`;
-            }
-        });
-}
+      .then((response) => response.json())
+      .then((data) => {
+        const scoreColor = data.score >= 80 ? 'var(--success-color)' : data.score >= 60 ? 'var(--warning-color)' : 'var(--danger-color)';
+        this.resultDiv.innerHTML += `<p><strong>评分：</strong><span style="color: ${scoreColor}; font-size: 1.2em;">${data.score}/100</span></p>`;
+      })
+      .catch((error) => {
+        console.error('评测错误:', error);
+        this.resultDiv.innerHTML += '<p style="color: var(--danger-color);">评测失败，请重试</p>';
+      });
+  }
 
-function removeWord(btn) {
-    const item = btn.closest('.vocab-item');
-    if (item) {
-        item.style.animation = 'fadeOut 0.3s ease-out';
-        setTimeout(() => {
-            item.remove();
-        }, 300);
-    }
-}
-
-// Add fadeOut animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes fadeOut {
-        to {
-            opacity: 0;
-            transform: translateX(100%);
-        }
-    }
-`;
-document.head.appendChild(style);
-
-// ===== Content caching =====
-function cacheContent() {
+  cacheContent() {
     try {
-        const data = {
-            original: document.getElementById('original-text')?.textContent || '',
-            ruby: document.getElementById('highlight-text')?.innerHTML || '',
-            translation: document.querySelector('.translation-text')?.innerHTML || '',
-            title: document.getElementById('lesson-title')?.textContent || '',
-            vocab: Array.from(document.querySelectorAll('.vocab-item')).map(v => ({
-                word: v.querySelector('.vocab-word')?.textContent || '',
-                pronunciation: v.querySelector('.vocab-pronunciation')?.textContent || '',
-                meaning: v.querySelector('.vocab-meaning')?.textContent || ''
-            })),
-            ts: Date.now()
-        };
-        if (data.original) localStorage.setItem('lessonContent', JSON.stringify(data));
-    } catch (e) { console.warn('缓存失败', e); }
+      const data = {
+        original: this.originalTextEl?.textContent || '',
+        ruby: this.highlightTextEl?.innerHTML || '',
+        translation: document.querySelector('.translation-text')?.innerHTML || '',
+        title: document.getElementById('lesson-title')?.textContent || '',
+        vocab: Array.from(document.querySelectorAll('.vocab-item')).map((item) => ({
+          word: item.dataset.vocabWord || item.querySelector('.vocab-word')?.textContent || '',
+          pronunciation: item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '',
+          meaning: item.querySelector('.vocab-meaning')?.textContent || ''
+        })),
+        ts: Date.now()
+      };
+
+      if (data.original) {
+        localStorage.setItem('lessonContent', JSON.stringify(data));
+      }
+    } catch (error) {
+      console.warn('缓存失败', error);
+    }
+  }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+  try {
+    speechRecognitionManager = new SpeechRecognitionManager();
+    textHighlighter = new TextHighlighter();
+    pdfExporter = new PDFExporter();
+
+    const originalText = document.getElementById('original-text')?.textContent || '';
+    const rubyText = document.getElementById('ruby-text-data')?.innerHTML || '';
+    textHighlighter.setContent(originalText, rubyText);
+
+    const highlightEl = document.getElementById('highlight-text');
+    if (highlightEl) {
+      highlightEl.innerHTML = rubyText;
+    }
+
+    const controller = new ReadingPageController();
+    controller.init();
+
+    window.speakVocabWord = controller.speakVocabWord.bind(controller);
+    window.toggleVocabMastered = controller.toggleVocabMastered.bind(controller);
+    window.stopReadingSpeech = controller.stopSpeech.bind(controller);
+  } catch (error) {
+    console.error('阅读页初始化失败', error);
+  }
+});
