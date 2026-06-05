@@ -57,9 +57,9 @@
           charIndex += segment.text.length;
           const end = charIndex;
           const escaped = this.escapeHtml(segment.text);
-        if (!segment.isWordLike) {
-          return `<span class="sentence-token sentence-token--punct" data-char-start="${start}" data-char-end="${end}">${escaped}</span>`;
-        }
+          if (!segment.isWordLike) {
+            return `<span class="sentence-token sentence-token--punct" data-char-start="${start}" data-char-end="${end}">${escaped}</span>`;
+          }
 
           const index = wordIndex;
           wordIndex += 1;

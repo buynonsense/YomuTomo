@@ -16,6 +16,7 @@ class ReadingPageController {
     this.currentSentenceIndex = -1;
     this.currentWordIndex = -1;
     this.currentWordTimer = null;
+    this.currentWordFallbackTimer = null;
     this.lastScrolledSentenceIndex = -1;
     this.playbackSessionId = 0;
     this.vocabSpeechSessionId = 0;
@@ -23,6 +24,7 @@ class ReadingPageController {
     this.speechSupported = 'speechSynthesis' in window;
     this.root = document.body;
     this.wordHighlighter = null;
+    this.boundaryDrivenPlayback = false;
   }
 
   init() {
@@ -332,6 +334,10 @@ class ReadingPageController {
       window.clearInterval(this.currentWordTimer);
       this.currentWordTimer = null;
     }
+    if (this.currentWordFallbackTimer) {
+      window.clearTimeout(this.currentWordFallbackTimer);
+      this.currentWordFallbackTimer = null;
+    }
   }
 
   startPlaybackSession() {
@@ -353,11 +359,11 @@ class ReadingPageController {
     }
 
     this.clearWordTimer();
-    this.currentWordIndex = 0;
+    this.currentWordIndex = -1;
+    this.boundaryDrivenPlayback = false;
     this.syncSentenceHighlight();
 
     const canUseBoundaryEvents = Boolean(utterance && typeof utterance.addEventListener === 'function');
-    let sawBoundaryEvent = false;
 
     if (canUseBoundaryEvents) {
       utterance.addEventListener('boundary', (event) => {
@@ -369,12 +375,12 @@ class ReadingPageController {
           return;
         }
 
-        const wordIndex = ttsWordHighlighter?.findWordIndexAtCharIndex(sentenceItem.wordRanges, event.charIndex) ?? -1;
+        const wordIndex = this.wordHighlighter?.findWordIndexAtCharIndex(sentenceItem.wordRanges, event.charIndex) ?? -1;
         if (wordIndex < 0) {
           return;
         }
 
-        sawBoundaryEvent = true;
+        this.boundaryDrivenPlayback = true;
         this.clearWordTimer();
         this.currentWordIndex = wordIndex;
         this.syncSentenceHighlight();
@@ -385,13 +391,12 @@ class ReadingPageController {
       return;
     }
 
-    this.currentWordTimer = window.setTimeout(() => {
-      if (!this.isActivePlayback(sessionId) || sawBoundaryEvent) {
+    this.currentWordFallbackTimer = window.setTimeout(() => {
+      if (!this.isActivePlayback(sessionId) || this.boundaryDrivenPlayback) {
         return;
       }
 
       const interval = Math.max(180, Math.round(1200 / sentenceItem.wordCount));
-      this.clearWordTimer();
       let wordIndex = 0;
       this.currentWordIndex = 0;
       this.syncSentenceHighlight();
@@ -416,6 +421,7 @@ class ReadingPageController {
   stopWordHighlight() {
     this.clearWordTimer();
     this.currentWordIndex = -1;
+    this.boundaryDrivenPlayback = false;
   }
 
   speakSequence(sessionId, index) {
@@ -609,6 +615,13 @@ class ReadingPageController {
     const sessionId = ++this.vocabSpeechSessionId;
     const utterance = this.createUtterance(text);
     this.currentUtterance = utterance;
+    utterance.onstart = () => {
+      if (sessionId !== this.vocabSpeechSessionId) {
+        return;
+      }
+
+      this.currentUtterance = utterance;
+    };
     utterance.onend = () => {
       if (sessionId !== this.vocabSpeechSessionId) {
         return;
