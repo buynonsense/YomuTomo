@@ -1,6 +1,6 @@
 # YomuTomo - 开发和部署工具
 
-.PHONY: help install dev build up down logs clean
+.PHONY: help install dev build up down logs clean api-test
 
 # 默认目标
 help: ## 显示帮助信息
@@ -14,6 +14,7 @@ help: ## 显示帮助信息
 	@echo "  make down       停止Docker服务"
 	@echo "  make logs       查看日志"
 	@echo "  make clean      清理Docker资源"
+	@echo "  make api-test   运行后端接口覆盖测试"
 	@echo ""
 	@echo "部署命令:"
 	@echo "  make deploy     生产环境部署"
@@ -30,21 +31,21 @@ build: ## 构建Docker镜像
 	docker build -t yomu-app .
 
 up: ## 启动Docker服务（开发环境）
-	docker-compose up -d
+	docker compose up -d
 
 down: ## 停止Docker服务
-	docker-compose down
+	docker compose down
 
 logs: ## 查看Docker日志
-	docker-compose logs -f
+	docker compose logs -f
 
 clean: ## 清理Docker资源
-	docker-compose down -v
+	docker compose down -v
 	docker system prune -f
-	docker volume rm yomu_postgres_data || true
+	docker volume rm yomu_postgres_data yomu_postgres_prod_data || true
 
 deploy: ## 生产环境部署
-	docker-compose -f docker-compose.prod.yml up -d
+	docker compose -f docker-compose.prod.yml up -d
 
 backup: ## 备份数据库
 	@echo "备份数据库..."
@@ -63,6 +64,9 @@ restore: ## 恢复数据库（需要指定备份文件）
 test: ## 运行测试
 	pytest
 
+api-test: ## 运行后端接口覆盖测试
+	pytest tests/test_api_coverage.py -q
+
 lint: ## 代码检查
 	flake8 app/
 	black --check app/
@@ -74,13 +78,13 @@ format: ## 格式化代码
 
 # 生产环境管理
 prod-up: ## 启动生产环境
-	docker-compose -f docker-compose.prod.yml up -d
+	docker compose -f docker-compose.prod.yml up -d
 
 prod-down: ## 停止生产环境
-	docker-compose -f docker-compose.prod.yml down
+	docker compose -f docker-compose.prod.yml down
 
 prod-logs: ## 查看生产环境日志
-	docker-compose -f docker-compose.prod.yml logs -f
+	docker compose -f docker-compose.prod.yml logs -f
 
 prod-nginx: ## 启动生产环境（包含Nginx）
-	docker-compose -f docker-compose.prod.yml --profile nginx up -d
+	docker compose -f docker-compose.prod.yml --profile nginx up -d

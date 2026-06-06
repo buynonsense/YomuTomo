@@ -1,8 +1,7 @@
 import json
 import pykakasi
 import openai
-from datetime import datetime, timedelta
-from passlib.context import CryptContext
+from passlib.hash import pbkdf2_sha256
 from typing import List, Dict, Tuple
 from app.core.config import settings
 import concurrent.futures
@@ -12,17 +11,20 @@ import inspect
 import traceback
 import logging
 from app.services.ai_client_async import AIClient, AIClientError
+from app.utils.time import beijing_now
+
+try:
+    import bcrypt as bcrypt_backend
+except ImportError:
+    bcrypt_backend = None
 
 
 # 日志函数，包含北京时间
 def log_with_time(message: str, level: str = "INFO"):
     """带北京时间的日志输出"""
-    beijing_time = datetime.utcnow() + timedelta(hours=8)
-    timestamp = beijing_time.strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = beijing_now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] [{level}] {message}")
 
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 kks = pykakasi.kakasi()
 # 移除默认客户端，使用用户提供的配置
@@ -260,11 +262,38 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Use a long-password-safe default for new hashes.
+    return pbkdf2_sha256.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
+    if password_hash.startswith("$pbkdf2-sha256$"):
+        try:
+            return pbkdf2_sha256.verify(password, password_hash)
+        except (ValueError, TypeError):
+            return False
+
+    if is_legacy_bcrypt_hash(password_hash):
+        return verify_legacy_bcrypt_password(password, password_hash)
+
+    return False
+
+
+def is_legacy_bcrypt_hash(password_hash: str) -> bool:
+    return password_hash.startswith(("$2a$", "$2b$", "$2x$", "$2y$"))
+
+
+def verify_legacy_bcrypt_password(password: str, password_hash: str) -> bool:
+    if bcrypt_backend is None:
+        return False
+
+    try:
+        return bcrypt_backend.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8"),
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[str, List[Dict], str, str, str]:
@@ -370,5 +399,3 @@ class SyncCompatCompletions:
 class SyncCompatClient:
     def __init__(self, provider: dict):
         self.chat = type('C', (), {'completions': SyncCompatCompletions(provider)})()
-
-

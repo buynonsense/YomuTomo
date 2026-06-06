@@ -1,4 +1,3 @@
-from datetime import datetime
 import json
 from fastapi import APIRouter, Request, Form, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -6,10 +5,20 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db import get_db
 from app.model.models import User, Article
-from app.services.services import generate_ruby, extract_vocabulary, translate_to_chinese, generate_title, get_openai_client, generate_emoji, generate_all_content, log_with_time
 from app.services.ai_client_async import AIClient, AIClientError
-from app.core.config import settings
+from app.services import services as service_module
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
+from app.utils.time import to_beijing_time, utc_now
+
+# Backward-compatible module-level aliases for tests and older call sites.
+get_openai_client = service_module.get_openai_client
+generate_ruby = service_module.generate_ruby
+extract_vocabulary = service_module.extract_vocabulary
+translate_to_chinese = service_module.translate_to_chinese
+generate_title = service_module.generate_title
+generate_emoji = service_module.generate_emoji
+generate_all_content = service_module.generate_all_content
+log_with_time = service_module.log_with_time
 
 router = APIRouter(prefix="", tags=["文章"])
 
@@ -54,20 +63,15 @@ async def dashboard(
         .all()
     )
     
-    # 转换时间为北京时间
-    from datetime import timedelta
     for article in articles:
-        if article.updated_at:
-            article.updated_at_beijing = article.updated_at + timedelta(hours=8)
-        else:
-            article.updated_at_beijing = None
+        article.updated_at_beijing = to_beijing_time(article.updated_at)
     
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "user": user,
             "articles": articles,
             "page": page,
@@ -82,7 +86,7 @@ async def dashboard(
 async def show_loading(request: Request):
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
-    return templates.TemplateResponse("loading.html", {"request": request})
+    return templates.TemplateResponse(request, "loading.html")
 
 
 @router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")
@@ -93,9 +97,9 @@ async def show_result(request: Request):
 
     # 这里需要从请求中获取数据，暂时返回一个占位符
     return templates.TemplateResponse(
+        request,
         "reading.html",
         {
-            "request": request,
             "original": "处理结果将在这里显示",
             "ruby_text": "<p>请刷新页面或重新提交</p>",
             "vocab": [],
@@ -169,8 +173,8 @@ async def process_text_async(
             ruby_html=ruby_text,
             translation=translation,
             vocab_json=json.dumps(vocab, ensure_ascii=False),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
         db.add(article)
         db.commit()
@@ -202,16 +206,16 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if not article:
         return RedirectResponse(url="/dashboard", status_code=303)
-    article.updated_at = datetime.utcnow()
+    article.updated_at = utc_now()
     db.commit()
     vocab = json.loads(article.vocab_json)
     vocab = attach_vocab_state(db, user.id, vocab)
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
+        request,
         "reading.html",
         {
-            "request": request,
             "article_id": article.id,
             "original": article.original,
             "ruby_text": article.ruby_html,
@@ -236,9 +240,9 @@ async def vocabulary_book(request: Request, status: str = Query(None, descriptio
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
+        request,
         "vocabulary.html",
         {
-            "request": request,
             "user": user,
             "vocab_rows": vocab_rows,
             "status": status or "all",

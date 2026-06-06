@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Iterable
 
 from sqlalchemy.orm import Session
 
 from app.model.models import Article, VocabularyEntry
+from app.utils.time import utc_now
 
 
 def _normalize_word(word: str) -> str:
@@ -41,8 +41,8 @@ def seed_vocabulary_entries(
             pronunciation=_normalize_word(item.get('pronunciation', '')) or None,
             meaning=_normalize_word(item.get('meaning', '')) or None,
             status='learning',
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
         db.add(entry)
         created_count += 1
@@ -80,8 +80,8 @@ def toggle_vocabulary_status(
             word=normalized_word,
             pronunciation=_normalize_word(pronunciation or '') or None,
             meaning=_normalize_word(meaning or '') or None,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now(),
+            updated_at=utc_now(),
         )
         db.add(entry)
 
@@ -92,9 +92,10 @@ def toggle_vocabulary_status(
     if article_id and entry.article_id is None:
         entry.article_id = article_id
 
+    now = utc_now()
     entry.status = 'mastered' if mastered else 'learning'
-    entry.mastered_at = datetime.utcnow() if mastered else None
-    entry.updated_at = datetime.utcnow()
+    entry.mastered_at = now if mastered else None
+    entry.updated_at = now
     db.commit()
     db.refresh(entry)
     return entry

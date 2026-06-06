@@ -5,6 +5,8 @@
 
 set -e
 
+COMPOSE_FILE="docker-compose.prod.yml"
+
 echo "🚀 YomuTomo 部署脚本"
 echo "========================"
 
@@ -29,30 +31,30 @@ if [ -z "$POSTGRES_PASSWORD" ]; then
 fi
 
 echo "📦 构建 Docker 镜像..."
-docker-compose build
+docker compose -f "$COMPOSE_FILE" build
 
 echo "🗃️ 启动 PostgreSQL..."
-docker-compose up -d postgres
+docker compose -f "$COMPOSE_FILE" up -d postgres
 
 echo "⏳ 等待数据库就绪..."
 sleep 10
 
 echo "🚀 启动应用..."
-docker-compose up -d yomu_app
+docker compose -f "$COMPOSE_FILE" up -d yomu_app
 
 echo "✅ 部署完成！"
 echo ""
 echo "📊 服务状态："
-docker-compose ps
+docker compose -f "$COMPOSE_FILE" ps
 
 echo ""
 echo "🌐 应用访问地址：http://localhost:8000"
 echo "📖 API 文档：http://localhost:8000/docs"
 echo ""
 echo "🔧 管理命令："
-echo "  查看日志：docker-compose logs -f"
-echo "  停止服务：docker-compose down"
-echo "  重启服务：docker-compose restart"
+echo "  查看日志：docker compose -f $COMPOSE_FILE logs -f"
+echo "  停止服务：docker compose -f $COMPOSE_FILE down"
+echo "  重启服务：docker compose -f $COMPOSE_FILE restart"
 echo ""
 echo "💾 数据库信息："
 echo "  主机：localhost:5432"

@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime
 from app.db import get_db
 from app.model.models import Article, User, CrawlTask
 from app.services.services import generate_all_content, get_openai_client, log_with_time
@@ -9,6 +8,7 @@ from app.core.config import settings
 import os
 import threading
 import time
+from app.utils.time import utc_now
 
 def get_nhk_easy_news():
     """获取NHK Easy新闻 - 使用真实JSON API"""
@@ -192,7 +192,7 @@ def crawl_and_save_articles_background(user_id, task_id):
             return
         
         task.status = "processing"
-        task.updated_at = datetime.utcnow()
+        task.updated_at = utc_now()
         db.commit()
         
         user = db.query(User).filter(User.id == user_id).first()
@@ -245,7 +245,7 @@ def crawl_and_save_articles_background(user_id, task_id):
                     
                     processed_count += 1
                     task.processed_articles = processed_count
-                    task.updated_at = datetime.utcnow()
+                    task.updated_at = utc_now()
                     db.commit()
                     log_with_time(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {news['title']}")
                     
@@ -257,7 +257,7 @@ def crawl_and_save_articles_background(user_id, task_id):
         
         # 更新任务状态为完成
         task.status = "completed"
-        task.updated_at = datetime.utcnow()
+        task.updated_at = utc_now()
         db.commit()
         log_with_time(f"🎉 爬虫任务完成！共处理 {processed_count} 篇文章")
         
@@ -267,7 +267,7 @@ def crawl_and_save_articles_background(user_id, task_id):
         traceback.print_exc()
         if task:
             task.status = "failed"
-            task.updated_at = datetime.utcnow()
+            task.updated_at = utc_now()
             db.commit()
     finally:
         db.close()

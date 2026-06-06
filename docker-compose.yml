@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL数据库
   postgres:
@@ -47,13 +45,10 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    volumes:
-      # 如果需要热重载开发，可以取消注释下面的行
-      # - .:/app
-      # - /app/__pycache__
 
 volumes:
   postgres_data:
+    name: yomu_postgres_data
 
 networks:
   yomu_network:

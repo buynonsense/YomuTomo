@@ -1,7 +1,7 @@
-from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db import Base
+from app.utils.time import utc_now
 
 
 class User(Base):
@@ -15,7 +15,7 @@ class User(Base):
     openai_api_key = Column(String(500), nullable=True)
     openai_base_url = Column(String(500), nullable=True)
     openai_model = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     articles = relationship("Article", back_populates="user", cascade="all, delete-orphan")
     vocabulary_entries = relationship("VocabularyEntry", back_populates="user", cascade="all, delete-orphan")
@@ -33,8 +33,8 @@ class Article(Base):
     translation = Column(Text, nullable=False)
     vocab_json = Column(Text, nullable=False)
     source_url = Column(String(500), nullable=True)  # 源URL字段
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
 
     user = relationship("User", back_populates="articles")
     vocabulary_entries = relationship("VocabularyEntry", back_populates="article", cascade="all, delete-orphan")
@@ -53,8 +53,8 @@ class VocabularyEntry(Base):
     pronunciation = Column(String(255), nullable=True)
     meaning = Column(Text, nullable=True)
     status = Column(String(50), default="learning", nullable=False)  # learning, mastered
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
     mastered_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="vocabulary_entries")
@@ -69,8 +69,7 @@ class CrawlTask(Base):
     status = Column(String(50), default="pending", nullable=False)  # pending, processing, completed, failed
     total_articles = Column(Integer, default=0, nullable=False)
     processed_articles = Column(Integer, default=0, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
 
     user = relationship("User")
-
