@@ -1,10 +1,39 @@
+import asyncio
 import json
 import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_HTTPX_ERRORS = (httpx.TimeoutException, httpx.NetworkError)
+if hasattr(httpx, "RemoteProtocolError"):
+    _RETRYABLE_HTTPX_ERRORS = _RETRYABLE_HTTPX_ERRORS + (httpx.RemoteProtocolError,)
+
+
+def _ai_request_timeout_seconds() -> float:
+    try:
+        return max(1.0, float(getattr(settings, "AI_REQUEST_TIMEOUT_SECONDS", 60.0)))
+    except Exception:
+        return 60.0
+
+
+def _ai_request_retries() -> int:
+    try:
+        return max(1, int(getattr(settings, "AI_REQUEST_RETRIES", 2)))
+    except Exception:
+        return 1
+
+
+def _ai_retry_delay_seconds(attempt: int) -> float:
+    try:
+        base = max(0.0, float(getattr(settings, "AI_REQUEST_RETRY_DELAY_SECONDS", 1.0)))
+    except Exception:
+        base = 1.0
+    return min(base * (2 ** max(0, attempt - 1)), 5.0)
 
 
 class AIClientError(Exception):
@@ -81,77 +110,101 @@ class OpenAICompatClient(BaseClient):
             # default fallback: append full path
             full = base + '/v1/chat/completions'
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                r = await client.post(full, headers=self._headers(), json=body)
-                # If provider returns 404 for constructed path, attempt a fallback to the raw base url
-                if r.status_code == 404:
-                    logger.warning('OpenAICompatClient got 404 for %s, retrying raw api_url %s', full, base)
-                    try:
-                        fb = await client.post(base, headers=self._headers(), json=body)
-                        if fb.status_code >= 200 and fb.status_code < 300:
-                            data = fb.json()
-                        else:
-                            # include both response bodies for debugging
-                            txt1 = None
-                            txt2 = None
-                            try:
-                                txt1 = r.text
-                            except Exception:
-                                txt1 = '<no body>'
-                            try:
-                                txt2 = fb.text
-                            except Exception:
-                                txt2 = '<no body>'
-                            logger.error('OpenAICompatClient primary(%s) and fallback(%s) failed: %s / %s', full, base, txt1, txt2)
-                            fb.raise_for_status()
-                    except Exception:
-                        # bubble up original r content if fallback also fails
-                        try:
-                            logger.error('OpenAICompatClient fallback post to %s failed: %s', base, fb.text if 'fb' in locals() else '<no body>')
-                        except Exception:
-                            pass
-                        r.raise_for_status()
-                else:
-                    try:
-                        r.raise_for_status()
-                    except Exception:
-                        # Log response text to aid debugging (some providers return useful JSON errors)
-                        txt = None
-                        try:
-                            txt = r.text
-                        except Exception:
-                            txt = '<could not read response body>'
-                        logger.error('OpenAICompatClient async chat non-2xx response: %s %s', r.status_code, txt)
-                        r.raise_for_status()
-                    data = r.json()
-                text = None
-                if isinstance(data, dict):
-                    choices = data.get("choices") or []
-                    if choices:
-                        delta = choices[0].get("message") or choices[0].get("delta")
-                        if delta:
-                            if isinstance(delta, dict):
-                                text = delta.get("content") or delta.get("content", None)
-                        text = text or choices[0].get("text") or choices[0].get("message", {}).get("content")
-                return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
-            except Exception as e:
-                logger.exception("OpenAICompatClient async chat failed")
-                msg = str(e)
+        timeout_seconds = _ai_request_timeout_seconds()
+        retries = _ai_request_retries()
+
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            for attempt in range(1, retries + 1):
                 try:
-                    # If this was an httpx HTTPStatusError, include response body for debugging
-                    if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
-                        resp = e.response
-                        req_url = getattr(resp, 'url', None) or full
-                        body_text = None
+                    r = await client.post(full, headers=self._headers(), json=body)
+                    # If provider returns 404 for constructed path, attempt a fallback to the raw base url
+                    if r.status_code == 404:
+                        logger.warning('OpenAICompatClient got 404 for %s, retrying raw api_url %s', full, base)
                         try:
-                            body_text = resp.text
+                            fb = await client.post(base, headers=self._headers(), json=body)
+                            if fb.status_code >= 200 and fb.status_code < 300:
+                                data = fb.json()
+                            else:
+                                # include both response bodies for debugging
+                                txt1 = None
+                                txt2 = None
+                                try:
+                                    txt1 = r.text
+                                except Exception:
+                                    txt1 = '<no body>'
+                                try:
+                                    txt2 = fb.text
+                                except Exception:
+                                    txt2 = '<no body>'
+                                logger.error('OpenAICompatClient primary(%s) and fallback(%s) failed: %s / %s', full, base, txt1, txt2)
+                                fb.raise_for_status()
                         except Exception:
-                            body_text = '<could not read response body>'
-                        msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
-                except Exception:
-                    pass
-                raise AIClientError(msg)
+                            # bubble up original r content if fallback also fails
+                            try:
+                                logger.error('OpenAICompatClient fallback post to %s failed: %s', base, fb.text if 'fb' in locals() else '<no body>')
+                            except Exception:
+                                pass
+                            r.raise_for_status()
+                    else:
+                        try:
+                            r.raise_for_status()
+                        except Exception:
+                            # Log response text to aid debugging (some providers return useful JSON errors)
+                            txt = None
+                            try:
+                                txt = r.text
+                            except Exception:
+                                txt = '<could not read response body>'
+                            logger.error('OpenAICompatClient async chat non-2xx response: %s %s', r.status_code, txt)
+                            r.raise_for_status()
+                        data = r.json()
+                    text = None
+                    if isinstance(data, dict):
+                        choices = data.get("choices") or []
+                        if choices:
+                            delta = choices[0].get("message") or choices[0].get("delta")
+                            if delta:
+                                if isinstance(delta, dict):
+                                    text = delta.get("content") or delta.get("content", None)
+                            text = text or choices[0].get("text") or choices[0].get("message", {}).get("content")
+                    return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
+                except AIClientError:
+                    raise
+                except _RETRYABLE_HTTPX_ERRORS as e:
+                    if attempt < retries:
+                        logger.info(
+                            "OpenAICompatClient retry %s/%s after transient error for %s: %s",
+                            attempt,
+                            retries,
+                            full,
+                            e,
+                        )
+                        await asyncio.sleep(_ai_retry_delay_seconds(attempt))
+                        continue
+                    logger.warning(
+                        "OpenAICompatClient failed after %s attempt(s) for %s: %s",
+                        retries,
+                        full,
+                        e,
+                    )
+                    raise AIClientError("OpenAI 兼容接口请求超时，请稍后重试") from e
+                except Exception as e:
+                    logger.exception("OpenAICompatClient async chat failed")
+                    msg = str(e)
+                    try:
+                        # If this was an httpx HTTPStatusError, include response body for debugging
+                        if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
+                            resp = e.response
+                            req_url = getattr(resp, 'url', None) or full
+                            body_text = None
+                            try:
+                                body_text = resp.text
+                            except Exception:
+                                body_text = '<could not read response body>'
+                            msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                    except Exception:
+                        pass
+                    raise AIClientError(msg) from e
 
 
 class GeminiClient(BaseClient):
@@ -217,106 +270,130 @@ class GeminiClient(BaseClient):
             merged.update(extra)
         merged and body.update(merged)
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                # For Google Generative Language API, many users use API keys instead of OAuth tokens.
-                # If the api_url indicates generativelanguage.googleapis.com and the provided api_key
-                # looks like an API key (heuristic: does not start with 'ya29.'), send it as query param `key=`.
-                params = None
+        timeout_seconds = _ai_request_timeout_seconds()
+        retries = _ai_request_retries()
+
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            for attempt in range(1, retries + 1):
                 try:
-                    low_base = (base or '').lower()
-                    if 'generativelanguage.googleapis.com' in low_base and self.api_key:
-                        # heuristic for API key vs OAuth token
-                        if not str(self.api_key).startswith('ya29.'):
-                            params = {'key': self.api_key}
-                except Exception:
+                    # For Google Generative Language API, many users use API keys instead of OAuth tokens.
+                    # If the api_url indicates generativelanguage.googleapis.com and the provided api_key
+                    # looks like an API key (heuristic: does not start with 'ya29.'), send it as query param `key=`.
                     params = None
-
-                # Build headers: if using Google Generative Language with API key, DO NOT send Authorization header
-                headers_local = self._headers()
-                if is_google_gl and params:
-                    # API key in query param should be used instead of Authorization header
-                    headers_local.pop('Authorization', None)
-
-                # Log the final target and request body for debugging
-                try:
-                    final_url_debug = full + (('?'+ '&'.join([f"{k}={v}" for k,v in params.items()])) if params else '')
-                except Exception:
-                    final_url_debug = full
-                logger.debug('GeminiClient POST %s body=%s headers=%s', final_url_debug, json.dumps(body, ensure_ascii=False), {k: ('<redacted>' if k.lower()=='authorization' else v) for k,v in headers_local.items()})
-
-                r = await client.post(full, headers=headers_local, json=body, params=params)
-                if r.status_code == 404:
-                    # Try OpenAI-compatible chat completions path as a fallback (some providers support compat layer)
                     try:
-                        logger.warning('GeminiClient primary generateMessage returned 404, trying /v1/chat/completions fallback')
-                        openai_compat_url = base.rstrip('/') + '/v1/chat/completions'
-                        # construct OpenAI-style body
-                        oa_body = {"model": self.model, "messages": messages}
-                        oa_merged = {}
-                        if isinstance(self.extra, dict):
-                            oa_merged.update(self.extra)
-                        if extra:
-                            oa_merged.update(extra)
-                        oa_merged and oa_body.update(oa_merged)
-                        # For fallback, reuse header policy (remove Authorization if using API key)
-                        fb = await client.post(openai_compat_url, headers=headers_local, json=oa_body, params=params)
-                        if fb.status_code >= 200 and fb.status_code < 300:
-                            data = fb.json()
-                            # parse as OpenAI response
-                            text = None
-                            if isinstance(data, dict):
-                                choices = data.get('choices') or []
-                                if choices:
-                                    delta = choices[0].get('message') or choices[0].get('delta')
-                                    if delta and isinstance(delta, dict):
-                                        text = delta.get('content') or delta.get('content', None)
-                                    text = text or choices[0].get('text') or choices[0].get('message', {}).get('content')
-                            return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
-                        else:
-                            logger.error('GeminiClient fallback also failed: %s %s', fb.status_code, fb.text if hasattr(fb, 'text') else str(fb))
-                            fb.raise_for_status()
+                        low_base = (base or '').lower()
+                        if 'generativelanguage.googleapis.com' in low_base and self.api_key:
+                            # heuristic for API key vs OAuth token
+                            if not str(self.api_key).startswith('ya29.'):
+                                params = {'key': self.api_key}
                     except Exception:
-                        # re-raise original 404 if fallback fails
+                        params = None
+
+                    # Build headers: if using Google Generative Language with API key, DO NOT send Authorization header
+                    headers_local = self._headers()
+                    if is_google_gl and params:
+                        # API key in query param should be used instead of Authorization header
+                        headers_local.pop('Authorization', None)
+
+                    # Log the final target and request body for debugging
+                    try:
+                        final_url_debug = full + (('?'+ '&'.join([f"{k}={v}" for k,v in params.items()])) if params else '')
+                    except Exception:
+                        final_url_debug = full
+                    logger.debug('GeminiClient POST %s body=%s headers=%s', final_url_debug, json.dumps(body, ensure_ascii=False), {k: ('<redacted>' if k.lower()=='authorization' else v) for k,v in headers_local.items()})
+
+                    r = await client.post(full, headers=headers_local, json=body, params=params)
+                    if r.status_code == 404:
+                        # Try OpenAI-compatible chat completions path as a fallback (some providers support compat layer)
                         try:
-                            logger.error('GeminiClient fallback post failed: %s', r.text if hasattr(r, 'text') else str(r))
+                            logger.warning('GeminiClient primary generateMessage returned 404, trying /v1/chat/completions fallback')
+                            openai_compat_url = base.rstrip('/') + '/v1/chat/completions'
+                            # construct OpenAI-style body
+                            oa_body = {"model": self.model, "messages": messages}
+                            oa_merged = {}
+                            if isinstance(self.extra, dict):
+                                oa_merged.update(self.extra)
+                            if extra:
+                                oa_merged.update(extra)
+                            oa_merged and oa_body.update(oa_merged)
+                            # For fallback, reuse header policy (remove Authorization if using API key)
+                            fb = await client.post(openai_compat_url, headers=headers_local, json=oa_body, params=params)
+                            if fb.status_code >= 200 and fb.status_code < 300:
+                                data = fb.json()
+                                # parse as OpenAI response
+                                text = None
+                                if isinstance(data, dict):
+                                    choices = data.get('choices') or []
+                                    if choices:
+                                        delta = choices[0].get('message') or choices[0].get('delta')
+                                        if delta and isinstance(delta, dict):
+                                            text = delta.get('content') or delta.get('content', None)
+                                        text = text or choices[0].get('text') or choices[0].get('message', {}).get('content')
+                                return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
+                            else:
+                                logger.error('GeminiClient fallback also failed: %s %s', fb.status_code, fb.text if hasattr(fb, 'text') else str(fb))
+                                fb.raise_for_status()
                         except Exception:
-                            pass
+                            # re-raise original 404 if fallback fails
+                            try:
+                                logger.error('GeminiClient fallback post failed: %s', r.text if hasattr(r, 'text') else str(r))
+                            except Exception:
+                                pass
+                            r.raise_for_status()
+                    else:
                         r.raise_for_status()
-                else:
-                    r.raise_for_status()
-                    data = r.json()
-                text = None
-                if isinstance(data, dict):
-                    if "candidates" in data:
-                        c = data.get("candidates")
-                        if c and isinstance(c, list):
-                            first = c[0].get("content") or {}
-                            # Common Gemini/GL shape: content.parts -> [{text: ...}, ...]
-                            parts = first.get("parts") or []
-                            if parts and isinstance(parts, list):
-                                try:
-                                    text = ''.join([p.get('text', '') for p in parts if isinstance(p, dict)])
-                                except Exception:
-                                    text = None
-                            # fallback: some vendors put text directly
-                            if not text:
-                                text = first.get("text") or first.get('text', None)
-                    if not text:
-                        text = json.dumps(data, ensure_ascii=False)
-                return {"text": text or "", "raw": data}
-            except Exception as e:
-                logger.exception("GeminiClient async chat failed")
-                msg = str(e)
-                try:
-                    if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
-                        resp = e.response
-                        req_url = getattr(resp, 'url', None) or full
-                        try:
-                            body_text = resp.text
-                        except Exception:
-                            body_text = '<could not read response body>'
-                        msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
-                except Exception:
-                    pass
-                raise AIClientError(msg)
+                        data = r.json()
+                    text = None
+                    if isinstance(data, dict):
+                        if "candidates" in data:
+                            c = data.get("candidates")
+                            if c and isinstance(c, list):
+                                first = c[0].get("content") or {}
+                                # Common Gemini/GL shape: content.parts -> [{text: ...}, ...]
+                                parts = first.get("parts") or []
+                                if parts and isinstance(parts, list):
+                                    try:
+                                        text = ''.join([p.get('text', '') for p in parts if isinstance(p, dict)])
+                                    except Exception:
+                                        text = None
+                                # fallback: some vendors put text directly
+                                if not text:
+                                    text = first.get("text") or first.get('text', None)
+                        if not text:
+                            text = json.dumps(data, ensure_ascii=False)
+                    return {"text": text or "", "raw": data}
+                except AIClientError:
+                    raise
+                except _RETRYABLE_HTTPX_ERRORS as e:
+                    if attempt < retries:
+                        logger.info(
+                            "GeminiClient retry %s/%s after transient error for %s: %s",
+                            attempt,
+                            retries,
+                            full,
+                            e,
+                        )
+                        await asyncio.sleep(_ai_retry_delay_seconds(attempt))
+                        continue
+                    logger.warning(
+                        "GeminiClient failed after %s attempt(s) for %s: %s",
+                        retries,
+                        full,
+                        e,
+                    )
+                    raise AIClientError("Gemini 接口请求超时，请稍后重试") from e
+                except Exception as e:
+                    logger.exception("GeminiClient async chat failed")
+                    msg = str(e)
+                    try:
+                        if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
+                            resp = e.response
+                            req_url = getattr(resp, 'url', None) or full
+                            try:
+                                body_text = resp.text
+                            except Exception:
+                                body_text = '<could not read response body>'
+                            msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                    except Exception:
+                        pass
+                    raise AIClientError(msg) from e

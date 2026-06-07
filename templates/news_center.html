@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YomuTomo - NHK 新闻中心</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="alternate icon" href="/static/favicon.ico" />
+    <link rel="stylesheet" href="/static/css/main.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav-bar">
+        {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
+        <a href="/" class="nav-button">🏠 首页</a>
+        <a href="/dashboard" class="nav-button">📚 我的文章</a>
+        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
+      </nav>
+
+      <header class="page-header">
+        <h1>📰 NHK 新闻中心</h1>
+        <p>浏览最近 {{ news_count }} 条新闻，选择你想开始阅读的那一篇。</p>
+      </header>
+
+      <main class="main-content">
+        <section class="card">
+          <div class="card-heading-row">
+            <div>
+              <h2>最近新闻</h2>
+              <p>当前展示 {{ limit }} 条。点击“生成文章”会把对应新闻送入后台处理。</p>
+            </div>
+            <div class="news-center-toolbar">
+              <a href="/news_center?limit=10" class="btn-secondary news-limit-link {% if limit == 10 %}is-active{% endif %}">10 条</a>
+              <a href="/news_center?limit=12" class="btn-secondary news-limit-link {% if limit == 12 %}is-active{% endif %}">12 条</a>
+              <a href="/news_center?limit=20" class="btn-secondary news-limit-link {% if limit == 20 %}is-active{% endif %}">20 条</a>
+              <button type="button" id="refresh-news-btn" class="btn-secondary">刷新列表</button>
+            </div>
+          </div>
+
+          <div id="news-center-status" class="news-center-status">请选择一条新闻开始生成文章，后台会自动完成简化、注音和生词提取。</div>
+
+          {% if news_items and news_items|length > 0 %}
+            <div class="news-grid">
+              {% for item in news_items %}
+                <article class="news-card" data-news-card data-news-url="{{ item.source_url }}" data-news-title="{{ item.title }}">
+                  <div class="news-card__top">
+                    <span class="news-card__badge">NHK Easy</span>
+                    <a href="{{ item.source_url }}" target="_blank" class="btn-secondary" title="查看原文" aria-label="查看原文">原文</a>
+                  </div>
+                  <h3 class="news-card__title">{{ item.title }}</h3>
+                  {% if item.title_with_ruby %}
+                    <div class="news-card__ruby">{{ item.title_with_ruby | safe }}</div>
+                  {% endif %}
+                  {% if item.outline %}
+                    <p class="news-card__outline">{{ item.outline }}</p>
+                  {% endif %}
+                  <div class="news-card__actions">
+                    <button type="button" class="btn-primary news-crawl-btn">生成文章</button>
+                    <a href="{{ item.source_url }}" target="_blank" class="btn-secondary">阅读原文</a>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="news-empty-state">暂时没有抓到可用新闻，请稍后刷新再试。</p>
+          {% endif %}
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/pages/news-center.js"></script>
+  </body>
+</html>

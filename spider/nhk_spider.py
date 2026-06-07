@@ -1,8 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
 import json
+from typing import Iterable
 from app.db import get_db
 from app.model.models import Article, User, CrawlTask
+from app.services.ai_client_async import AIClientError
 from app.services.services import generate_all_content, get_openai_client, log_with_time
 from app.core.config import settings
 import os
@@ -10,11 +12,56 @@ import threading
 import time
 from app.utils.time import utc_now
 
-def get_nhk_easy_news():
+NHK_EASY_NEWS_URL = "https://www3.nhk.or.jp/news/easy/top-list.json"
+NHK_EASY_BASE_URL = "https://www3.nhk.or.jp/news/easy"
+
+
+def _fallback_nhk_news() -> list[dict]:
+    return [
+        {
+            'title': '台風15号で雨や風の被害　これからも気をつけて',
+            'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511573/ne2025090511573.html',
+            'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511573/ne2025090511573.html'
+        },
+        {
+            'title': '日本がアメリカに輸出する車などの関税　15%になる',
+            'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511472/ne2025090511472.html',
+            'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511472/ne2025090511472.html'
+        },
+        {
+            'title': '世界で有名なデザイナー　アルマーニさんが亡くなった',
+            'url': 'https://www3.nhk.or.jp/news/easy/ne2025090516408/ne2025090516408.html',
+            'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090516408/ne2025090516408.html'
+        },
+        {
+            'title': '秋の魚「さんま」　今年はたくさんとれそうだ',
+            'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511546/ne2025090511546.html',
+            'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511546/ne2025090511546.html'
+        },
+        {
+            'title': '台風15号が九州の近くを進んでいる　雨に気をつけて',
+            'url': 'https://www3.nhk.or.jp/news/easy/ne2025090412073/ne2025090412073.html',
+            'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090412073/ne2025090412073.html'
+        }
+    ]
+
+
+def _normalize_selected_urls(selected_urls: Iterable[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for url in selected_urls or []:
+        if not isinstance(url, str):
+            continue
+        value = url.strip()
+        if value and value.startswith(NHK_EASY_BASE_URL):
+            normalized.append(value)
+    return normalized
+
+
+def get_nhk_easy_news(limit: int = 12):
     """获取NHK Easy新闻 - 使用真实JSON API"""
     try:
         # NHK Easy JSON API
-        url = "https://www3.nhk.or.jp/news/easy/top-list.json"
+        url = NHK_EASY_NEWS_URL
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
@@ -28,8 +75,8 @@ def get_nhk_easy_news():
         
         news_list = []
         
-        # 取前1条新闻（用户要求只爬第一条）
-        for item in news_data[:1]:
+        # 取前 N 条新闻，作为新闻中心的候选列表
+        for item in news_data[:max(limit, 0)]:
             try:
                 news_id = item.get('news_id', '')
                 title = item.get('title', '')
@@ -62,33 +109,25 @@ def get_nhk_easy_news():
     except Exception as e:
         log_with_time(f"获取NHK Easy新闻失败: {e}")
         # 返回示例数据作为fallback
-        return [
-            {
-                'title': '台風15号で雨や風の被害　これからも気をつけて',
-                'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511573/ne2025090511573.html',
-                'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511573/ne2025090511573.html'
-            },
-            {
-                'title': '日本がアメリカに輸出する車などの関税　15%になる',
-                'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511472/ne2025090511472.html',
-                'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511472/ne2025090511472.html'
-            },
-            {
-                'title': '世界で有名なデザイナー　アルマーニさんが亡くなった',
-                'url': 'https://www3.nhk.or.jp/news/easy/ne2025090516408/ne2025090516408.html',
-                'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090516408/ne2025090516408.html'
-            },
-            {
-                'title': '秋の魚「さんま」　今年はたくさんとれそうだ',
-                'url': 'https://www3.nhk.or.jp/news/easy/ne2025090511546/ne2025090511546.html',
-                'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090511546/ne2025090511546.html'
-            },
-            {
-                'title': '台風15号が九州の近くを進んでいる　雨に気をつけて',
-                'url': 'https://www3.nhk.or.jp/news/easy/ne2025090412073/ne2025090412073.html',
-                'source_url': 'https://www3.nhk.or.jp/news/easy/ne2025090412073/ne2025090412073.html'
-            }
-        ]
+        fallback = _fallback_nhk_news()
+        return fallback[:max(limit, 0)] if limit else fallback
+
+
+def resolve_nhk_news_items(selected_urls: Iterable[str] | None = None, limit: int = 12) -> list[dict]:
+    """按 URL 过滤 NHK 新闻列表。"""
+    news_items = get_nhk_easy_news(limit=limit)
+    normalized_urls = _normalize_selected_urls(selected_urls)
+    if not normalized_urls:
+        return news_items
+
+    selected = []
+    news_map = {item.get('url'): item for item in news_items if item.get('url')}
+    for url in normalized_urls:
+        item = news_map.get(url)
+        if item:
+            selected.append(item)
+
+    return selected
 
 def get_houkago_news():
     """获取放課後NEWS - 暂时返回空列表（网站可能已变更）"""
@@ -159,11 +198,11 @@ def get_article_content(url):
                 return content
         
         # 如果都失败了，返回提示信息
-        return f"无法提取文章内容，请访问原文：{url}"
+        return None
         
     except Exception as e:
         log_with_time(f"获取文章内容失败 {url}: {e}")
-        return f"获取内容失败：{str(e)}"
+        return None
 
 def generate_simplified_article(original_text, user_level, model, client):
     levels = {
@@ -175,15 +214,20 @@ def generate_simplified_article(original_text, user_level, model, client):
     }
     level_desc = levels.get(user_level, "JLPT N3水平（一般性话题）")
     prompt = f"请将以下日文文章简化到适合{level_desc}的学习者阅读水平。保持主要内容，但使用相应等级的词汇和句子结构，只输出结果，不要说无关的话。\n\n原文：{original_text}"
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+    except AIClientError as e:
+        log_with_time(f"[AI] generate_simplified_article failed, fallback to original: {e}")
+        return original_text
 
-def crawl_and_save_articles_background(user_id, task_id):
+def crawl_and_save_articles_background(user_id, task_id, selected_urls: Iterable[str] | None = None):
     """后台处理爬虫任务"""
     db = next(get_db())
+    selected_url_list = _normalize_selected_urls(selected_urls)
     
     try:
         # 更新任务状态为处理中
@@ -211,11 +255,13 @@ def crawl_and_save_articles_background(user_id, task_id):
         client = get_openai_client(user.openai_api_key, user.openai_base_url)
         model = user.openai_model
         
-        nhk_news = get_nhk_easy_news()
-        # 只使用NHK Easy新闻，移除放課後NEWS
-        all_news = nhk_news
+        if selected_url_list:
+            all_news = resolve_nhk_news_items(selected_urls=selected_url_list, limit=max(20, len(selected_url_list)))
+        else:
+            # 只使用NHK Easy新闻，移除放課後NEWS
+            all_news = get_nhk_easy_news(limit=1)
         
-        task.total_articles = len(all_news)  # 现在是1条新闻
+        task.total_articles = len(all_news)
         
         processed_count = 0
         
@@ -248,7 +294,13 @@ def crawl_and_save_articles_background(user_id, task_id):
                     task.updated_at = utc_now()
                     db.commit()
                     log_with_time(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {news['title']}")
+                else:
+                    log_with_time(f"⚠️ 抓取正文失败，跳过该条: {news['title']}")
+                    continue
                     
+            except AIClientError as e:
+                log_with_time(f"⚠️ 处理文章时 AI 请求失败，已跳过该条: {news['title']}, 错误: {e}")
+                continue
             except Exception as e:
                 log_with_time(f"❌ 处理文章失败: {news['title']}, 错误: {e}")
                 import traceback
@@ -273,9 +325,10 @@ def crawl_and_save_articles_background(user_id, task_id):
         db.close()
 
 
-def crawl_and_save_articles(user_id):
+def crawl_and_save_articles(user_id, selected_urls: Iterable[str] | None = None):
     """启动后台爬虫任务"""
     db = next(get_db())
+    selected_url_list = _normalize_selected_urls(selected_urls)
     
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -296,7 +349,7 @@ def crawl_and_save_articles(user_id):
         # 启动后台线程处理
         thread = threading.Thread(
             target=crawl_and_save_articles_background,
-            args=(user_id, task.id)
+            args=(user_id, task.id, selected_url_list or None)
         )
         thread.daemon = True
         thread.start()

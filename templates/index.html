@@ -19,7 +19,7 @@
         {% if user %}
           <span class="user-pill">👋 {{ user.email }}</span>
           <a href="/dashboard" class="nav-button">📚 我的文章</a>
-          <button id="crawl-news-btn" class="nav-button">📰 爬取新闻</button>
+          <button id="crawl-news-btn" class="nav-button">📰 新闻中心</button>
           <button id="settings-btn" class="nav-button">⚙️ 设置</button>
           <form method="post" action="/logout">
             <button type="submit" class="nav-button">🚪 退出登录</button>
@@ -147,74 +147,9 @@
         // 爬取新闻按钮事件
         const crawlBtn = document.getElementById('crawl-news-btn');
         if (crawlBtn) {
-          crawlBtn.addEventListener('click', async function() {
-            // 显示确认消息并自动继续
-            showToast('正在启动NHK新闻爬取任务...', 'info', 2000);
-            crawlBtn.disabled = true;
-            crawlBtn.textContent = '⏳ 启动中...';
-            
-            try {
-              const response = await fetch('/crawl_news', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                }
-              });
-              
-              const result = await response.json();
-              
-              if (response.ok && result.success) {
-                showToast('爬虫任务已启动！系统将在后台处理新闻，您可以关闭浏览器。处理完成后，请查看"我的文章"页面。', 'success');
-                crawlBtn.textContent = '✅ 已启动';
-                // 开始轮询任务状态
-                pollCrawlStatus();
-              } else {
-                showToast('启动失败：' + (result.message || '未知错误'), 'error');
-                crawlBtn.disabled = false;
-                crawlBtn.textContent = '📰 爬取新闻';
-              }
-            } catch (error) {
-              showToast('网络错误，请稍后重试', 'error');
-              console.error('Crawl error:', error);
-              crawlBtn.disabled = false;
-              crawlBtn.textContent = '📰 爬取新闻';
-            }
+          crawlBtn.addEventListener('click', function() {
+            window.location.href = '/news_center';
           });
-        }
-
-        // 轮询爬虫任务状态
-        function pollCrawlStatus() {
-          const statusInterval = setInterval(async () => {
-            try {
-              const response = await fetch('/crawl_status');
-              const status = await response.json();
-              
-              if (status.status === 'completed') {
-                clearInterval(statusInterval);
-                showToast('新闻爬取完成！请查看"我的文章"页面。', 'success');
-                crawlBtn.disabled = false;
-                crawlBtn.textContent = '📰 爬取新闻';
-              } else if (status.status === 'failed') {
-                clearInterval(statusInterval);
-                showToast('爬取任务失败，请稍后重试', 'error');
-                crawlBtn.disabled = false;
-                crawlBtn.textContent = '📰 爬取新闻';
-              } else if (status.status === 'processing') {
-                const progress = status.total_articles > 0 ? 
-                  ` (${status.processed_articles}/${status.total_articles})` : '';
-                crawlBtn.textContent = `⏳ 处理中${progress}`;
-              }
-            } catch (error) {
-              console.error('Status check error:', error);
-            }
-          }, 2000); // 每2秒检查一次状态
-          
-          // 5分钟后停止轮询，避免无限循环
-          setTimeout(() => {
-            clearInterval(statusInterval);
-            crawlBtn.disabled = false;
-            crawlBtn.textContent = '📰 爬取新闻';
-          }, 300000);
         }
 
         // 设置按钮事件

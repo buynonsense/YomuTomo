@@ -42,6 +42,34 @@ class DummyAsyncClient:
         return {"text": "ok"}
 
 
+NEWS_FIXTURE_ITEMS = [
+    {
+        "title": "台風で強い雨　交通機関に影響",
+        "title_with_ruby": "台風で<ruby>強<rt>つよ</rt></ruby>い雨　交通機関に影響",
+        "outline": "台風の影響で各地で強い雨が降り、電車やバスに遅れが出ています。",
+        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+        "news_id": "ne2026010100001",
+    },
+    {
+        "title": "新しい公園がオープンした",
+        "title_with_ruby": "新しい<ruby>公園<rt>こうえん</rt></ruby>がオープンした",
+        "outline": "地域の新しい公園が開園し、家族連れでにぎわっています。",
+        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100002/ne2026010100002.html",
+        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100002/ne2026010100002.html",
+        "news_id": "ne2026010100002",
+    },
+    {
+        "title": "駅で忘れ物を届ける仕組みを改善",
+        "title_with_ruby": "駅で<ruby>忘<rt>わす</rt></ruby>れ<ruby>物<rt>もの</rt></ruby>を届ける仕組みを改善",
+        "outline": "駅構内での忘れ物をより早く持ち主に返せるように仕組みが改善されました。",
+        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100003/ne2026010100003.html",
+        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100003/ne2026010100003.html",
+        "news_id": "ne2026010100003",
+    },
+]
+
+
 @pytest.fixture(autouse=True)
 def _fast_passwords(monkeypatch: pytest.MonkeyPatch):
     from app.services import services as service_module
@@ -170,7 +198,17 @@ def app_client(client: TestClient, db_session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         spider_module,
         "crawl_and_save_articles",
-        lambda user_id: {"success": True, "message": "爬虫任务已启动，后台处理中", "task_id": 1},
+        lambda user_id, selected_urls=None: {
+            "success": True,
+            "message": "爬虫任务已启动，后台处理中",
+            "task_id": 1,
+            "selected_urls": selected_urls or [],
+        },
+    )
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: NEWS_FIXTURE_ITEMS[:limit],
     )
     monkeypatch.setattr(service_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
     monkeypatch.setattr(service_module, "generate_ruby", lambda text, model, client: "<ruby>今天<rt>きょう</rt></ruby>")
@@ -533,6 +571,42 @@ def test_crawl_status_and_crawl_news_flow(app_client: TestClient, user_factory, 
     response = app_client.post("/crawl_news")
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+def test_news_center_renders_multiple_items(app_client: TestClient, user_factory):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    response = app_client.get("/news_center?limit=2")
+
+    assert response.status_code == 200
+    assert "NHK 新闻中心" in response.text
+    assert NEWS_FIXTURE_ITEMS[0]["title"] in response.text
+    assert NEWS_FIXTURE_ITEMS[1]["title"] in response.text
+    assert NEWS_FIXTURE_ITEMS[2]["title"] not in response.text
+
+
+def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    captured = {}
+
+    def fake_crawl(user_id, selected_urls=None):
+        captured["user_id"] = user_id
+        captured["selected_urls"] = list(selected_urls or [])
+        return {"success": True, "message": "爬虫任务已启动，后台处理中", "task_id": 99}
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "crawl_and_save_articles", fake_crawl)
+
+    response = app_client.post("/crawl_news", json={"news_url": NEWS_FIXTURE_ITEMS[1]["source_url"]})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert captured["user_id"] == user.id
+    assert captured["selected_urls"] == [NEWS_FIXTURE_ITEMS[1]["source_url"]]
 
 
 def test_auth_and_article_routes_have_template_coverage(app_client: TestClient):

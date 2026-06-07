@@ -15,7 +15,11 @@ class Settings:
     # 假名模式：kakasi | hybrid | ai
     FURIGANA_MODE = os.getenv("FURIGANA_MODE", "hybrid")
 
+    # AI 请求层超时与重试配置
+    AI_REQUEST_TIMEOUT_SECONDS = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "60"))
+    AI_REQUEST_RETRIES = int(os.getenv("AI_REQUEST_RETRIES", "2"))
+    AI_REQUEST_RETRY_DELAY_SECONDS = float(os.getenv("AI_REQUEST_RETRY_DELAY_SECONDS", "1"))
+
 
 settings = Settings()
-
 

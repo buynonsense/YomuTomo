@@ -89,6 +89,33 @@ async def show_loading(request: Request):
     return templates.TemplateResponse(request, "loading.html")
 
 
+@router.get("/news_center", response_class=HTMLResponse, summary="NHK 新闻中心")
+async def news_center(
+    request: Request,
+    limit: int = Query(12, ge=1, le=20, description="展示的新闻数量"),
+    db: Session = Depends(get_db),
+):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    from fastapi.templating import Jinja2Templates
+    from spider.nhk_spider import get_nhk_easy_news
+
+    news_items = get_nhk_easy_news(limit=limit)
+    templates = Jinja2Templates(directory="templates")
+    return templates.TemplateResponse(
+        request,
+        "news_center.html",
+        {
+            "user": user,
+            "news_items": news_items,
+            "limit": limit,
+            "news_count": len(news_items),
+        },
+    )
+
+
 @router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")
 async def show_result(request: Request):
     # 从sessionStorage获取处理结果
@@ -347,6 +374,32 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
+
+    selected_urls: list[str] = []
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+
+    if isinstance(payload, dict):
+        raw_selected = payload.get("news_urls")
+        if raw_selected is None:
+            raw_selected = payload.get("selected_urls")
+        if raw_selected is None and payload.get("news_url"):
+            raw_selected = [payload.get("news_url")]
+        if isinstance(raw_selected, str):
+            raw_selected = [raw_selected]
+        if isinstance(raw_selected, list):
+            for item in raw_selected:
+                if not isinstance(item, str):
+                    continue
+                value = item.strip()
+                if value and value.startswith("https://www3.nhk.or.jp/news/easy/"):
+                    selected_urls.append(value)
+
+    if selected_urls:
+        # 保持仅抓取 NHK Easy 正式条目，避免无效链接污染后台任务
+        selected_urls = list(dict.fromkeys(selected_urls))
     
     try:
         # Reload user from DB to get latest config (handles stale session/user object)
@@ -372,7 +425,10 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
             return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
         
         from spider.nhk_spider import crawl_and_save_articles
-        result = crawl_and_save_articles(user.id)
+        if selected_urls:
+            result = crawl_and_save_articles(user.id, selected_urls=selected_urls)
+        else:
+            result = crawl_and_save_articles(user.id)
         return result
     except Exception as e:
         return {"success": False, "message": str(e)}
