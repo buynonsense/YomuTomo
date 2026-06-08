@@ -18,7 +18,7 @@
           {% if articles and articles|length > 0 %}
           <div class="article-grid">
             {% for a in articles %}
-            <div class="article-bubble" data-article-id="{{ a.id }}" data-title="{{ a.title | e }}">
+            <div class="article-bubble" id="article-{{ a.id }}" data-article-id="{{ a.id }}" data-title="{{ a.title | e }}">
               <div class="bubble-main" data-article-id="{{ a.id }}" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
@@ -49,6 +49,22 @@
         {% endif %}
       </main>
     </div>
+    {% if request.query_params.get('highlight_article') %}
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        const articleEl = document.getElementById('article-{{ request.query_params.get("highlight_article") }}');
+        if (articleEl) {
+          articleEl.classList.add('notification-highlight-pulse');
+          setTimeout(() => {
+            articleEl.classList.remove('notification-highlight-pulse');
+          }, 2200);
+          setTimeout(() => {
+            articleEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }, 120);
+        }
+      });
+    </script>
+    {% endif %}
     <div id="action-panel-overlay" class="action-overlay" style="display:none;">
       <div class="action-panel">
         <div class="action-header">
@@ -125,6 +141,7 @@
     </button>
     <script src="/static/js/modules/ai-config.js"></script>
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/task-state.js"></script>
     <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/dashboard.js"></script>
   </body>

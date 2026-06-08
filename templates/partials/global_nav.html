@@ -6,16 +6,18 @@
 
     <div class="global-nav__center">
       {% if user %}
-        <a href="/news_center" class="global-nav__link{% if request.url.path.startswith('/news_center') %} is-active{% endif %}">新闻中心</a>
+        <a href="/news_center" data-nav-news-center class="global-nav__link{% if request.url.path.startswith('/news_center') %} is-active{% endif %}">新闻中心</a>
         <a href="/dashboard" class="global-nav__link{% if request.url.path.startswith('/dashboard') %} is-active{% endif %}">我的文章</a>
         <a href="/vocabulary" class="global-nav__link{% if request.url.path.startswith('/vocabulary') %} is-active{% endif %}">我的生词本</a>
-      {% else %}
-        <span class="global-nav__link is-muted">新闻中心</span>
       {% endif %}
     </div>
 
     <div class="global-nav__right">
       {% if user %}
+        <button id="global-notifications-btn" type="button" class="global-nav__icon-btn" aria-label="通知中心" aria-haspopup="dialog" aria-expanded="false">
+          <span class="global-nav__icon-btn__symbol" aria-hidden="true">🔔</span>
+          <span id="global-notifications-badge" class="global-nav__badge" hidden>0</span>
+        </button>
         <button id="global-settings-btn" type="button" class="global-nav__user global-nav__user--button">👋 {{ user.email }}</button>
         <form method="post" action="/logout" class="global-nav__form">
           <button type="submit" class="global-nav__action global-nav__action--logout">退出登录</button>
@@ -27,3 +29,6 @@
     </div>
   </div>
 </nav>
+
+{% include "partials/global_notifications_panel.html" %}
+<script src="/static/js/modules/notifications.js"></script>

@@ -8,27 +8,7 @@
     const crawlButtons = Array.from(document.querySelectorAll('.news-crawl-btn'));
 
     let pollTimer = null;
-    const ACTIVE_TASK_ID_KEY = 'newsCenterActiveTaskId';
     const NOTIFIED_TASK_IDS_KEY = 'newsCenterNotifiedTaskIds';
-
-    function getActiveTaskId() {
-      try {
-        return sessionStorage.getItem(ACTIVE_TASK_ID_KEY) || '';
-      } catch (error) {
-        console.error('读取新闻任务 ID 失败', error);
-        return '';
-      }
-    }
-
-    function setActiveTaskId(taskId) {
-      try {
-        if (taskId) {
-          sessionStorage.setItem(ACTIVE_TASK_ID_KEY, String(taskId));
-        }
-      } catch (error) {
-        console.error('保存新闻任务 ID 失败', error);
-      }
-    }
 
     function getNotifiedTaskIds() {
       try {
@@ -43,6 +23,79 @@
         console.error('读取已通知任务列表失败', error);
         return [];
       }
+    }
+
+    function getTaskState() {
+      if (!window.TaskState || typeof window.TaskState.readActiveTask !== 'function') {
+        return null;
+      }
+
+      return window.TaskState.readActiveTask();
+    }
+
+    function writeTaskState(taskId, taskType, startedAt) {
+      if (!window.TaskState || typeof window.TaskState.writeActiveTask !== 'function') {
+        return;
+      }
+
+      window.TaskState.writeActiveTask({
+        task_id: String(taskId),
+        task_type: taskType,
+        status: 'processing',
+        started_at: startedAt || new Date().toISOString(),
+      });
+    }
+
+    function clearTaskState() {
+      if (!window.TaskState) {
+        return;
+      }
+
+      if (typeof window.TaskState.clearActiveTask === 'function') {
+        window.TaskState.clearActiveTask();
+      }
+
+      if (typeof window.TaskState.setNewsNavBusy === 'function') {
+        window.TaskState.setNewsNavBusy(false);
+      }
+    }
+
+    function setTaskProcessing(taskId, taskType, startedAt) {
+      writeTaskState(taskId, taskType, startedAt);
+
+      if (window.TaskState && typeof window.TaskState.setNewsNavBusy === 'function') {
+        window.TaskState.setNewsNavBusy(true);
+      }
+    }
+
+    function keepTaskProcessing(taskId, taskType) {
+      const activeTask = getTaskState();
+
+      if (activeTask && activeTask.task_id) {
+        if (window.TaskState && typeof window.TaskState.setNewsNavBusy === 'function') {
+          window.TaskState.setNewsNavBusy(true);
+        }
+        return;
+      }
+
+      writeTaskState(taskId, taskType, new Date().toISOString());
+
+      if (window.TaskState && typeof window.TaskState.setNewsNavBusy === 'function') {
+        window.TaskState.setNewsNavBusy(true);
+      }
+    }
+
+    function restoreBusyStateFromStorage() {
+      const activeTask = getTaskState();
+      if (activeTask && activeTask.status === 'processing') {
+        if (window.TaskState && typeof window.TaskState.setNewsNavBusy === 'function') {
+          window.TaskState.setNewsNavBusy(true);
+        }
+        return true;
+      }
+
+      clearTaskState();
+      return false;
     }
 
     function hasNotifiedTask(taskId) {
@@ -67,6 +120,25 @@
       }
     }
 
+    function getProcessedArticlesCount(data) {
+      if (!data || typeof data.processed_articles !== 'number') {
+        return 0;
+      }
+
+      return data.processed_articles;
+    }
+
+    function getToastMessage(data, fallbackMessage) {
+      if (data && typeof data.message === 'string') {
+        const message = data.message.trim();
+        if (message) {
+          return message;
+        }
+      }
+
+      return fallbackMessage;
+    }
+
     function setButtonsDisabled(disabled) {
       crawlButtons.forEach((button) => {
         button.disabled = disabled;
@@ -83,27 +155,39 @@
     }
 
     function handleCrawlStatus(data) {
-      const taskId = data && data.task_id ? String(data.task_id) : getActiveTaskId();
+      const activeTask = getTaskState();
+      const taskId = data && data.task_id ? String(data.task_id) : (activeTask && activeTask.task_id) || '';
+      const taskType = (data && data.task_type) || (activeTask && activeTask.task_type) || 'news_crawl';
 
       if (data.status === 'processing') {
+        keepTaskProcessing(taskId, taskType);
         setButtonsDisabled(true);
         return;
       }
 
       stopPolling();
       setButtonsDisabled(false);
+      clearTaskState();
 
       if (data.status === 'completed') {
+        if (getProcessedArticlesCount(data) <= 0) {
+          if (taskId && !hasNotifiedTask(taskId)) {
+            markTaskNotified(taskId);
+            notify(getToastMessage(data, '新闻生成失败，请稍后重试。'), 'error');
+          }
+          return;
+        }
+
         if (taskId && !hasNotifiedTask(taskId)) {
           markTaskNotified(taskId);
-          notify('新闻生成完成，可以前往“我的文章”查看。', 'success');
+          notify(getToastMessage(data, '新闻生成完成，可以前往“我的文章”查看。'), 'success');
           window.setTimeout(() => window.location.reload(), 1500);
         }
         return;
       }
 
       if (data.status === 'failed') {
-        notify('新闻生成失败，请稍后重试。', 'error');
+        notify(getToastMessage(data, '新闻生成失败，请稍后重试。'), 'error');
         return;
       }
     }
@@ -129,10 +213,51 @@
       }
     }
 
+    function setButtonLabel(button, label) {
+      if (!button) {
+        return;
+      }
+
+      const textNode = button.querySelector('.btn-label');
+      if (textNode) {
+        textNode.textContent = label;
+        return;
+      }
+
+      button.textContent = label;
+    }
+
+    function setLoadingShellState(button, isLoading) {
+      if (!button) {
+        return;
+      }
+
+      const shell = button.closest('.btn-loading-shell');
+      if (shell) {
+        shell.classList.toggle('is-loading', isLoading);
+      }
+    }
+
+    async function fetchCrawlStatus() {
+      const response = await fetch('/crawl_status');
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch (error) {
+        throw new Error('新闻任务状态响应解析失败');
+      }
+
+      if (!response.ok) {
+        throw new Error((data && data.message) || (data && data.error) || '获取新闻任务状态失败');
+      }
+
+      return data;
+    }
+
     async function refreshStatus() {
       try {
-        const response = await fetch('/crawl_status');
-        const data = await response.json();
+        const data = await fetchCrawlStatus();
 
         handleCrawlStatus(data);
 
@@ -151,8 +276,7 @@
 
       pollTimer = window.setInterval(async () => {
         try {
-          const response = await fetch('/crawl_status');
-          const data = await response.json();
+          const data = await fetchCrawlStatus();
 
           handleCrawlStatus(data);
         } catch (error) {
@@ -173,9 +297,10 @@
 
       setButtonsDisabled(true);
       button.disabled = true;
-      button.dataset.originalText = button.textContent;
-      button.textContent = '处理中…';
+      button.dataset.originalText = button.querySelector('.btn-label')?.textContent || button.textContent;
+      setButtonLabel(button, '处理中…');
       button.classList.add('is-loading');
+      setLoadingShellState(button, true);
       card.classList.add('is-busy');
 
       try {
@@ -192,21 +317,23 @@
           throw new Error(data.message || data.error || '启动失败');
         }
 
-        setActiveTaskId(data.task_id);
+        setTaskProcessing(data.task_id, 'news_crawl', new Date().toISOString());
         notify(`${newsTitle} 已开始生成文章`, 'success');
         startPolling();
       } catch (error) {
         console.error('启动新闻爬取失败', error);
         notify(error.message || '启动失败', 'error');
         setButtonsDisabled(false);
-        button.textContent = button.dataset.originalText || '生成文章';
+        setButtonLabel(button, button.dataset.originalText || '生成文章');
         button.classList.remove('is-loading');
+        setLoadingShellState(button, false);
         card.classList.remove('is-busy');
       } finally {
         if (!pollTimer) {
           button.disabled = false;
-          button.textContent = button.dataset.originalText || '生成文章';
+          setButtonLabel(button, button.dataset.originalText || '生成文章');
           button.classList.remove('is-loading');
+          setLoadingShellState(button, false);
           card.classList.remove('is-busy');
         }
       }
@@ -220,9 +347,10 @@
       }
 
       setButtonsDisabled(true);
-      customUrlSubmit.dataset.originalText = customUrlSubmit.textContent;
-      customUrlSubmit.textContent = '处理中…';
+      customUrlSubmit.dataset.originalText = customUrlSubmit.querySelector('.btn-label')?.textContent || customUrlSubmit.textContent;
+      setButtonLabel(customUrlSubmit, '处理中…');
       customUrlSubmit.classList.add('is-loading');
+      setLoadingShellState(customUrlSubmit, true);
 
       try {
         const response = await fetch('/crawl_custom_url', {
@@ -238,16 +366,27 @@
           throw new Error(data.message || data.error || '启动失败');
         }
 
-        setActiveTaskId(data.task_id);
+        setTaskProcessing(data.task_id, 'custom_url_crawl', new Date().toISOString());
         notify('自定义 URL 已开始处理', 'success');
         startPolling();
       } catch (error) {
         console.error('启动自定义 URL 失败', error);
         notify(error.message || '启动失败', 'error');
         setButtonsDisabled(false);
-        customUrlSubmit.textContent = customUrlSubmit.dataset.originalText || '抓取并生成';
+        setButtonLabel(customUrlSubmit, customUrlSubmit.dataset.originalText || '抓取并生成');
         customUrlSubmit.classList.remove('is-loading');
+        setLoadingShellState(customUrlSubmit, false);
       }
+    }
+
+    function initializeTaskState() {
+      if (restoreBusyStateFromStorage()) {
+        setButtonsDisabled(true);
+        startPolling();
+        return;
+      }
+
+      refreshStatus();
     }
 
     crawlButtons.forEach((button) => {
@@ -262,6 +401,6 @@
       });
     }
 
-    refreshStatus();
+    initializeTaskState();
   });
 })();
