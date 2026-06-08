@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote, urlparse
 from typing import Optional
 from fastapi import APIRouter, Request, Form, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,6 +10,7 @@ from app.model.models import User, Article
 from app.routers.context import get_current_user
 from app.services.ai_client_async import AIClient, AIClientError
 from app.services import services as service_module
+from app.services.notifications import create_notification
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
 from app.utils.time import to_beijing_time, utc_now
 
@@ -30,6 +32,26 @@ def require_login(request: Request, db: Session) -> Optional[User]:
     if not user:
         return None
     return user
+
+
+def _build_internal_source_url(request: Request, fallback_path: str, query_params: dict[str, str] | None = None) -> str:
+    path = fallback_path
+    referer = request.headers.get("referer")
+    if isinstance(referer, str) and referer:
+        try:
+            parsed = urlparse(referer)
+            if parsed.path:
+                path = parsed.path
+                if parsed.query:
+                    path = f"{path}?{parsed.query}"
+        except Exception:
+            path = fallback_path
+
+    if query_params:
+        encoded = "&".join(f"{quote(str(key))}={quote(str(value))}" for key, value in query_params.items())
+        path = f"{path}{'&' if '?' in path else '?'}{encoded}"
+
+    return path
 
 
 @router.get("/dashboard", response_class=HTMLResponse, summary="我的文章仪表盘")
@@ -186,6 +208,18 @@ async def process_text_async(
         ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
     except Exception as e:
         # 返回错误信息
+        try:
+            create_notification(
+                db,
+                user_id=user.id,
+                type="system_error",
+                title="系统报错",
+                message=f"文章生成失败：{str(e)}",
+                source_task_id=None,
+                source_url="/",
+            )
+        except Exception as notify_error:
+            log_with_time(f"❌ 写入文章生成失败通知失败 user_id={user.id}: {notify_error}", level="ERROR")
         return {"error": str(e)}
 
     user = get_current_user(request, db)
@@ -212,6 +246,19 @@ async def process_text_async(
             db.rollback()
             log_with_time(f"[VOCAB] seed entries failed article_id={article.id}: {e}", level="ERROR")
 
+        try:
+            create_notification(
+                db,
+                user_id=user.id,
+                type="article_generated",
+                title="文章生成完成",
+                message=f"{title} 已生成完成，可以前往“我的文章”查看。",
+                source_task_id=article.id,
+                source_url=f"/articles/{article.id}",
+            )
+        except Exception as notify_error:
+            log_with_time(f"❌ 写入文章生成成功通知失败 article_id={article.id}: {notify_error}", level="ERROR")
+
         return {"redirect_url": f"/articles/{article.id}"}
 
     # 返回处理结果
@@ -235,6 +282,8 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
     db.commit()
     vocab = json.loads(article.vocab_json)
     vocab = attach_vocab_state(db, user.id, vocab)
+    highlight_notification = request.query_params.get("highlight_notification", "")
+    highlight_article = request.query_params.get("highlight_article", "")
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
     return templates.TemplateResponse(
@@ -248,6 +297,8 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
             "translation": article.translation,
             "title": article.title,
             "source_url": article.source_url,
+            "highlight_notification": highlight_notification,
+            "highlight_article": highlight_article,
         },
     )
 
@@ -515,6 +566,21 @@ async def save_ai_config(
         user.openai_base_url = openai_base_url
         user.openai_model = test_model
         db.commit()
+
+        try:
+            source_url = _build_internal_source_url(request, "/", {"open_settings": "ai"})
+            create_notification(
+                db,
+                user_id=user.id,
+                type="settings_saved",
+                title="AI 配置已保存",
+                message="AI 配置已保存成功，后续文章生成会使用新的参数。",
+                source_task_id=user.id,
+                source_url=source_url,
+            )
+        except Exception as notify_error:
+            log_with_time(f"❌ 写入 AI 配置保存通知失败 user_id={user.id}: {notify_error}", level="ERROR")
+
         return {"success": True, "message": "AI配置保存成功"}
     except Exception as e:
         db.rollback()
@@ -535,8 +601,12 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
     
     if not task:
         return {"status": "no_task"}
+
+    from spider.nhk_spider import TASK_FAILURE_MESSAGES
+
+    message = TASK_FAILURE_MESSAGES.get(task.id)
     
-    return {
+    payload = {
         "task_id": task.id,
         "status": task.status,
         "total_articles": task.total_articles,
@@ -544,6 +614,11 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
         "created_at": task.created_at.isoformat(),
         "updated_at": task.updated_at.isoformat()
     }
+
+    if message:
+        payload["message"] = message
+
+    return payload
 
 
 @router.get("/get_user_level", summary="获取用户当前等级")

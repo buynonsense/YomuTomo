@@ -2,9 +2,10 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
+import time
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -19,6 +20,8 @@ from app.routers import pages
 from app.routers import auth
 from app.routers import articles
 from app.routers import evaluation
+from app.routers import notifications
+from app.services.notifications import create_notification
 
 
 class ExtensionCompatibilityMiddleware(BaseHTTPMiddleware):
@@ -93,8 +96,37 @@ app.include_router(pages.router)
 app.include_router(auth.router)
 app.include_router(articles.router)
 app.include_router(evaluation.router)
+app.include_router(notifications.router)
+
+
+@app.middleware("http")
+async def system_error_notification_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        try:
+            from app.db import SessionLocal
+
+            db = SessionLocal()
+            try:
+                user_id = request.session.get("user_id") if hasattr(request, "session") else None
+                if user_id:
+                    create_notification(
+                        db,
+                        user_id=int(user_id),
+                        type="system_error",
+                        title="系统报错",
+                        message=f"系统发生异常：{str(exc)}",
+                        source_task_id=int(time.time_ns()),
+                        source_url=request.url.path,
+                    )
+            finally:
+                db.close()
+        except Exception as notify_error:
+            logging.getLogger("startup").error(f"写入系统报错通知失败: {notify_error}")
+
+        raise
 
 @app.get('/health')
 def health():
     return {'status': 'ok'}
-

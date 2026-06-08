@@ -1,0 +1,17 @@
+<div id="global-notifications-overlay" class="notifications-overlay" hidden>
+  <div class="notifications-panel" role="dialog" aria-modal="true" aria-labelledby="global-notifications-title">
+    <div class="notifications-panel__header">
+      <div>
+        <h3 id="global-notifications-title">通知中心</h3>
+        <p>这里会显示新闻任务、文章生成和系统通知。</p>
+      </div>
+      <button id="global-notifications-close" type="button" class="notifications-panel__close" aria-label="关闭通知面板">×</button>
+    </div>
+    <div class="notifications-panel__body">
+      <div class="notifications-panel__toolbar">
+        <button id="global-notifications-mark-all" type="button" class="btn-secondary">全部标为已读</button>
+      </div>
+      <div id="global-notifications-list" class="notifications-list" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
