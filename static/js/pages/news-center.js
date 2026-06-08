@@ -4,6 +4,8 @@
   document.addEventListener('DOMContentLoaded', function () {
     const statusEl = document.getElementById('news-center-status');
     const refreshBtn = document.getElementById('refresh-news-btn');
+    const customUrlInput = document.getElementById('custom-url-input');
+    const customUrlSubmit = document.getElementById('custom-url-submit');
     const cards = Array.from(document.querySelectorAll('[data-news-card]'));
     const crawlButtons = Array.from(document.querySelectorAll('.news-crawl-btn'));
 
@@ -31,6 +33,12 @@
       });
       if (refreshBtn) {
         refreshBtn.disabled = disabled;
+      }
+      if (customUrlSubmit) {
+        customUrlSubmit.disabled = disabled;
+      }
+      if (customUrlInput) {
+        customUrlInput.disabled = disabled;
       }
       cards.forEach((card) => {
         card.classList.toggle('is-busy', disabled);
@@ -164,6 +172,41 @@
       }
     }
 
+    async function startCustomUrlCrawl() {
+      const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+      if (!customUrl) {
+        notify('请先输入一个 URL', 'error');
+        return;
+      }
+
+      setButtonsDisabled(true);
+      setStatus('正在启动自定义 URL 抓取…', 'processing');
+
+      try {
+        const response = await fetch('/crawl_custom_url', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ url: customUrl })
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || data.error || '启动失败');
+        }
+
+        notify('自定义 URL 已开始处理', 'success');
+        setStatus('自定义 URL 已提交后台生成', 'processing');
+        startPolling();
+      } catch (error) {
+        console.error('启动自定义 URL 失败', error);
+        notify(error.message || '启动失败', 'error');
+        setStatus('自定义 URL 启动失败', 'error');
+        setButtonsDisabled(false);
+      }
+    }
+
     crawlButtons.forEach((button) => {
       button.addEventListener('click', function () {
         startCrawl(button);
@@ -173,6 +216,12 @@
     if (refreshBtn) {
       refreshBtn.addEventListener('click', function () {
         window.location.reload();
+      });
+    }
+
+    if (customUrlSubmit) {
+      customUrlSubmit.addEventListener('click', function () {
+        startCustomUrlCrawl();
       });
     }
 

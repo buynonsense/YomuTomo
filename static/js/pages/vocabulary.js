@@ -48,6 +48,7 @@
     const reviewNextBtn = document.getElementById('vocab-review-next');
     const reviewFlipBtn = document.getElementById('vocab-review-flip');
     const reviewToggleMasteredBtn = document.getElementById('vocab-review-toggle-mastered');
+    const reviewShuffleBtn = document.getElementById('vocab-review-shuffle');
     const rowsDataEl = document.getElementById('vocab-rows-data');
     const vocabItems = Array.from(document.querySelectorAll('.vocab-item'));
 
@@ -264,6 +265,16 @@
       syncReviewUI();
     }
 
+    function shuffleCards() {
+      for (let i = state.cards.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [state.cards[i], state.cards[j]] = [state.cards[j], state.cards[i]];
+      }
+      state.index = 0;
+      state.flipped = false;
+      syncReviewUI();
+    }
+
     function speakVocabWord(button) {
       const item = button.closest('.vocab-item');
       if (!item || !('speechSynthesis' in window)) {
@@ -317,6 +328,11 @@
     reviewEntryBtn.addEventListener('click', openReview);
     reviewCloseBtn.addEventListener('click', closeReview);
     reviewFlipBtn.addEventListener('click', flipCurrentCard);
+    if (reviewShuffleBtn) {
+      reviewShuffleBtn.addEventListener('click', function () {
+        shuffleCards();
+      });
+    }
     reviewPrevBtn.addEventListener('click', function () {
       moveCurrentCard(-1);
     });

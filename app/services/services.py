@@ -11,6 +11,7 @@ import inspect
 import traceback
 import logging
 from app.services.ai_client_async import AIClient, AIClientError
+from app.services.furigana_filter import apply_furigana_filter
 from app.utils.time import beijing_now
 
 try:
@@ -107,12 +108,15 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
 def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
     mode = settings.FURIGANA_MODE.lower()
     if mode == "kakasi":
-        return _kakasi_ruby(text)
+        ruby_html = _kakasi_ruby(text)
+        return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
     if mode == "ai":
-        return _ai_ruby(text, model, client)
+        ruby_html = _ai_ruby(text, model, client)
+        return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
     # hybrid
     base_html = _kakasi_ruby(text)
-    return _ai_fix_ruby(text, base_html, model, client)
+    ruby_html = _ai_fix_ruby(text, base_html, model, client)
+    return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
 
 
 def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dict]:

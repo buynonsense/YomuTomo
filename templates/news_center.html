@@ -37,6 +37,17 @@
             </div>
           </div>
 
+          <div class="custom-url-panel">
+            <div class="custom-url-panel__header">
+              <h3>自定义 URL</h3>
+              <p>粘贴任意你想阅读的日文网页，系统会尝试抓取并转换成文章。</p>
+            </div>
+            <div class="custom-url-panel__form">
+              <input id="custom-url-input" type="url" placeholder="https://example.com/jp-article" autocomplete="off" />
+              <button type="button" id="custom-url-submit" class="btn-primary">抓取并生成</button>
+            </div>
+          </div>
+
           <div id="news-center-status" class="news-center-status">请选择一条新闻开始生成文章，后台会自动完成简化、注音和生词提取。</div>
 
           {% if news_items and news_items|length > 0 %}

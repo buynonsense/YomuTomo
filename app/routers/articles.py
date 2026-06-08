@@ -434,6 +434,45 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
         return {"success": False, "message": str(e)}
 
 
+@router.post("/crawl_custom_url", summary="抓取自定义 URL 并生成文章")
+async def crawl_custom_url_endpoint(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "message": "未登录"}
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+
+    url = None
+    if isinstance(payload, dict):
+        raw_url = payload.get("url") or payload.get("source_url") or payload.get("page_url")
+        if isinstance(raw_url, str):
+            url = raw_url.strip()
+
+    if not url:
+        return {"success": False, "message": "请提供有效的 URL"}
+
+    try:
+        fresh = db.query(User).filter(User.id == user.id).first()
+        if fresh:
+            user = fresh
+
+        if not user.openai_api_key:
+            return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
+
+        provider = {"api_url": user.openai_base_url or '', "api_key": user.openai_api_key, "model": user.openai_model, "extra": {}}
+        client = AIClient.factory(provider)
+        await client.chat([{"role": "user", "content": "Hello"}])
+
+        from spider.nhk_spider import crawl_custom_url
+
+        return crawl_custom_url(user.id, url)
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 @router.get("/get_ai_config", summary="获取用户AI配置状态")
 async def get_ai_config(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)

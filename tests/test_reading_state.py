@@ -5,6 +5,7 @@ def test_reading_state_shape_is_json_serializable():
     state = {
         "furiganaMode": "show",
         "hideMastered": False,
+        "furiganaLevelFilter": 3,
         "masteredWords": ["天気"],
     }
 
@@ -12,4 +13,5 @@ def test_reading_state_shape_is_json_serializable():
 
     assert '"furiganaMode": "show"' in encoded
     assert '"hideMastered": false' in encoded
+    assert '"furiganaLevelFilter": 3' in encoded
     assert '"masteredWords": ["天気"]' in encoded

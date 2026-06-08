@@ -438,8 +438,32 @@ def test_evaluate_endpoint_returns_score_json(app_client: TestClient):
     response = app_client.post("/evaluate", data={"original": "今日は天気です", "recognized": "今日は天気です"})
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"score", "similarity", "original_similarity", "kana_similarity"}
+    assert set(data) == {
+        "score",
+        "similarity",
+        "original_similarity",
+        "kana_similarity",
+        "original_html",
+        "recognized_html",
+        "matched_tokens",
+        "miss_tokens",
+        "extra_tokens",
+        "original_tokens",
+        "recognized_tokens",
+    }
     assert data["score"] == 100
+    assert data["matched_tokens"] >= 1
+    assert data["original_tokens"] >= 1
+
+
+def test_evaluate_endpoint_marks_mismatched_tokens(app_client: TestClient):
+    response = app_client.post("/evaluate", data={"original": "今日は天気です", "recognized": "今日は雨です"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["miss_tokens"] >= 1
+    assert data["extra_tokens"] >= 1
+    assert 'evaluation-token--miss' in data["original_html"]
+    assert 'evaluation-token--extra' in data["recognized_html"]
 
 
 def test_process_text_async_requires_login(app_client: TestClient):
@@ -607,6 +631,41 @@ def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_facto
     assert response.json()["success"] is True
     assert captured["user_id"] == user.id
     assert captured["selected_urls"] == [NEWS_FIXTURE_ITEMS[1]["source_url"]]
+
+
+def test_crawl_custom_url_starts_background_task(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    captured = {}
+
+    def fake_crawl(user_id, url):
+        captured["user_id"] = user_id
+        captured["url"] = url
+        return {"success": True, "message": "自定义 URL 已启动，后台处理中", "task_id": 101, "selected_urls": [url]}
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "crawl_custom_url", fake_crawl)
+
+    response = app_client.post("/crawl_custom_url", json={"url": "https://example.com/jp-article"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["task_id"] == 101
+    assert captured["user_id"] == user.id
+    assert captured["url"] == "https://example.com/jp-article"
+
+
+def test_crawl_custom_url_rejects_invalid_scheme(app_client: TestClient, user_factory):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    response = app_client.post("/crawl_custom_url", json={"url": "javascript:alert(1)"})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is False
 
 
 def test_auth_and_article_routes_have_template_coverage(app_client: TestClient):

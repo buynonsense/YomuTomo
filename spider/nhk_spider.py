@@ -129,6 +129,117 @@ def resolve_nhk_news_items(selected_urls: Iterable[str] | None = None, limit: in
 
     return selected
 
+def _normalize_custom_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    value = url.strip()
+    if not value:
+        return None
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return None
+
+
+def crawl_custom_url(user_id: int, url: str) -> dict:
+    """抓取任意用户提供的 URL，沿用现有后台处理链路。"""
+    normalized = _normalize_custom_url(url)
+    if not normalized:
+        return {"success": False, "message": "URL 无效"}
+
+    db = next(get_db())
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return {"success": False, "message": "User not found"}
+        if not user.openai_api_key:
+            return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
+
+        task = CrawlTask(
+            user_id=user_id,
+            status="pending",
+            total_articles=1,
+            processed_articles=0,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+
+        thread = threading.Thread(
+            target=_crawl_custom_url_background,
+            args=(user_id, task.id, normalized),
+        )
+        thread.daemon = True
+        thread.start()
+
+        return {
+            "success": True,
+            "message": "自定义 URL 已启动，后台处理中",
+            "task_id": task.id,
+            "selected_urls": [normalized],
+        }
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"启动失败: {str(e)}"}
+    finally:
+        db.close()
+
+
+def _crawl_custom_url_background(user_id: int, task_id: int, url: str) -> None:
+    db = next(get_db())
+    task = None
+    try:
+        task = db.query(CrawlTask).filter(CrawlTask.id == task_id).first()
+        if not task:
+            return
+        task.status = "processing"
+        task.updated_at = utc_now()
+        db.commit()
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.openai_api_key:
+            task.status = "failed"
+            task.updated_at = utc_now()
+            db.commit()
+            return
+
+        content = get_article_content(url)
+        if not content:
+            task.status = "failed"
+            task.updated_at = utc_now()
+            db.commit()
+            return
+
+        client = get_openai_client(user.openai_api_key, user.openai_base_url)
+        model = user.openai_model
+        simplified = generate_simplified_article(content, user.level, model, client)
+        ruby_text, vocab, translation, title, emoji = generate_all_content(simplified, model, client)
+        article = Article(
+            user_id=user_id,
+            title=title,
+            emoji_cover=emoji,
+            original=f"来源: {url}\n\n{content}",
+            ruby_html=ruby_text,
+            translation=translation,
+            vocab_json=json.dumps(vocab, ensure_ascii=False),
+            source_url=url,
+        )
+        db.add(article)
+        task.processed_articles = 1
+        task.status = "completed"
+        task.updated_at = utc_now()
+        db.commit()
+    except Exception as e:
+        log_with_time(f"❌ 自定义URL处理失败: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        if task is not None:
+            task.status = "failed"
+            task.updated_at = utc_now()
+            db.commit()
+    finally:
+        db.close()
+
 def get_houkago_news():
     """获取放課後NEWS - 暂时返回空列表（网站可能已变更）"""
     try:

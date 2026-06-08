@@ -25,6 +25,11 @@ class ReadingPageController {
     this.root = document.body;
     this.wordHighlighter = null;
     this.boundaryDrivenPlayback = false;
+    this.evaluationDetailEl = null;
+    this.evaluationOriginalEl = null;
+    this.evaluationRecognizedEl = null;
+    this.evaluationSummaryEl = null;
+    this.levelFilter = this.state.furiganaLevelFilter || 1;
   }
 
   init() {
@@ -35,6 +40,7 @@ class ReadingPageController {
     this.bindTtsControls();
     this.bindVocabControls();
     this.bindBackToTop();
+    this.bindFuriganaLevelFilter();
     this.restoreState();
     this.renderSentences();
     this.refreshVocabView();
@@ -54,6 +60,10 @@ class ReadingPageController {
     this.rubyTextEl = document.getElementById('ruby-text-data');
     this.sentenceListEl = document.getElementById('sentence-list');
     this.vocabGridEl = document.getElementById('vocab-grid');
+    this.evaluationDetailEl = document.getElementById('evaluation-detail');
+    this.evaluationOriginalEl = document.getElementById('evaluation-original-html');
+    this.evaluationRecognizedEl = document.getElementById('evaluation-recognized-html');
+    this.evaluationSummaryEl = document.getElementById('evaluation-summary');
   }
 
   loadState() {
@@ -62,19 +72,22 @@ class ReadingPageController {
       if (!raw) {
         return {
           furiganaMode: 'show',
-          hideMastered: false
+          hideMastered: false,
+          furiganaLevelFilter: 1
         };
       }
       const parsed = JSON.parse(raw);
       return {
         furiganaMode: parsed.furiganaMode || 'show',
-        hideMastered: Boolean(parsed.hideMastered)
+        hideMastered: Boolean(parsed.hideMastered),
+        furiganaLevelFilter: Number(parsed.furiganaLevelFilter || 1)
       };
     } catch (error) {
       console.warn('读取阅读页状态失败', error);
       return {
         furiganaMode: 'show',
-        hideMastered: false
+        hideMastered: false,
+        furiganaLevelFilter: 1
       };
     }
   }
@@ -89,6 +102,7 @@ class ReadingPageController {
 
   restoreState() {
     this.applyFuriganaMode(this.state.furiganaMode);
+    this.applyFuriganaLevelFilter(this.state.furiganaLevelFilter);
     this.updateToggleMasteredButton();
   }
 
@@ -160,6 +174,17 @@ class ReadingPageController {
     });
   }
 
+  bindFuriganaLevelFilter() {
+    const levelButtons = document.querySelectorAll('[data-furigana-level]');
+    levelButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const level = Number(button.dataset.furiganaLevel || '1');
+        this.applyFuriganaLevelFilter(level);
+        this.saveState();
+      });
+    });
+  }
+
   applyFuriganaMode(mode) {
     const normalized = ['show', 'hover', 'hide'].includes(mode) ? mode : 'show';
     this.state.furiganaMode = normalized;
@@ -171,6 +196,33 @@ class ReadingPageController {
       button.classList.toggle('btn-primary', button.dataset.furiganaMode === normalized);
       button.classList.toggle('btn-secondary', button.dataset.furiganaMode !== normalized);
     });
+  }
+
+  applyFuriganaLevelFilter(level) {
+    const normalized = [1, 2, 3, 4, 5].includes(Number(level)) ? Number(level) : 1;
+    this.levelFilter = normalized;
+    this.state.furiganaLevelFilter = normalized;
+    document.body.dataset.furiganaLevelFilter = String(normalized);
+
+    document.querySelectorAll('[data-furigana-level]').forEach((button) => {
+      button.classList.toggle('btn-primary', Number(button.dataset.furiganaLevel || '1') === normalized);
+      button.classList.toggle('btn-secondary', Number(button.dataset.furiganaLevel || '1') !== normalized);
+    });
+
+    const rubyText = this.rubyTextEl?.innerHTML || this.highlightTextEl?.innerHTML || '';
+    if (!rubyText) {
+      return;
+    }
+
+    const parsed = window.FuriganaFilter && typeof window.FuriganaFilter.apply === 'function'
+      ? window.FuriganaFilter.apply(rubyText, normalized)
+      : rubyText;
+    if (this.highlightTextEl) {
+      this.highlightTextEl.innerHTML = parsed;
+    }
+    if (textHighlighter && typeof textHighlighter.setContent === 'function') {
+      textHighlighter.setContent(this.originalTextEl?.textContent || '', parsed);
+    }
   }
 
   bindTtsControls() {
@@ -703,6 +755,12 @@ class ReadingPageController {
     }
 
     const originalText = this.originalTextEl.textContent || '';
+    if (this.evaluationSummaryEl) {
+      this.evaluationSummaryEl.innerHTML = '<p>正在评测朗读结果…</p>';
+    }
+    if (this.evaluationDetailEl) {
+      this.evaluationDetailEl.hidden = true;
+    }
 
     fetch('/evaluate', {
       method: 'POST',
@@ -715,11 +773,31 @@ class ReadingPageController {
       .then((response) => response.json())
       .then((data) => {
         const scoreColor = data.score >= 80 ? 'var(--success-color)' : data.score >= 60 ? 'var(--warning-color)' : 'var(--danger-color)';
-        this.resultDiv.innerHTML += `<p><strong>评分：</strong><span style="color: ${scoreColor}; font-size: 1.2em;">${data.score}/100</span></p>`;
+        if (this.evaluationDetailEl) {
+          this.evaluationDetailEl.hidden = false;
+        }
+        if (this.evaluationOriginalEl) {
+          this.evaluationOriginalEl.innerHTML = data.original_html || '';
+        }
+        if (this.evaluationRecognizedEl) {
+          this.evaluationRecognizedEl.innerHTML = data.recognized_html || '';
+        }
+        if (this.evaluationSummaryEl) {
+          this.evaluationSummaryEl.innerHTML = `
+            <p><strong>评分：</strong><span style="color: ${scoreColor}; font-size: 1.2em;">${data.score}/100</span></p>
+            <p>匹配词块：${data.matched_tokens || 0} / ${data.original_tokens || 0}</p>
+            <p>遗漏词块：${data.miss_tokens || 0}，多读词块：${data.extra_tokens || 0}</p>
+          `;
+        }
       })
       .catch((error) => {
         console.error('评测错误:', error);
-        this.resultDiv.innerHTML += '<p style="color: var(--danger-color);">评测失败，请重试</p>';
+        if (this.evaluationSummaryEl) {
+          this.evaluationSummaryEl.innerHTML = '<p style="color: var(--danger-color);">评测失败，请重试</p>';
+        }
+        if (this.evaluationDetailEl) {
+          this.evaluationDetailEl.hidden = true;
+        }
       });
   }
 

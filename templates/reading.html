@@ -104,6 +104,15 @@
               </div>
             </div>
             <div class="toolbar-group">
+              <span class="toolbar-label">难度过滤</span>
+              <div class="toolbar-actions">
+                <button type="button" class="btn-secondary" data-furigana-level="1">N5</button>
+                <button type="button" class="btn-secondary" data-furigana-level="2">N4</button>
+                <button type="button" class="btn-secondary" data-furigana-level="3">N3</button>
+                <button type="button" class="btn-secondary" data-furigana-level="4">N2+</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
               <span class="toolbar-label">全文朗读</span>
               <div class="toolbar-actions">
                 <button id="tts-play-btn" class="btn-record" type="button">🔈 播放全文</button>
@@ -117,6 +126,23 @@
             <button id="export-pdf-btn" class="btn-export" type="button">📄 导出PDF</button>
           </div>
           <div id="result" class="result-display"></div>
+          <div id="evaluation-detail" class="evaluation-detail" hidden>
+            <div class="evaluation-detail__summary">
+              <span>原文对比</span>
+              <span>识别对比</span>
+            </div>
+            <div class="evaluation-detail__columns">
+              <div class="evaluation-detail__column">
+                <h3>原文</h3>
+                <div id="evaluation-original-html" class="evaluation-detail__text"></div>
+              </div>
+              <div class="evaluation-detail__column">
+                <h3>识别</h3>
+                <div id="evaluation-recognized-html" class="evaluation-detail__text"></div>
+              </div>
+            </div>
+          </div>
+          <div id="evaluation-summary" class="evaluation-summary" aria-live="polite"></div>
         </section>
       </main>
     </div>
@@ -124,6 +150,7 @@
     <script src="/static/js/modules/speech-recognition.js"></script>
     <script src="/static/js/modules/text-highlight.js"></script>
     <script src="/static/js/modules/tts-word-highlighter.js"></script>
+    <script src="/static/js/modules/furigana-filter.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/pages/reading.js"></script>

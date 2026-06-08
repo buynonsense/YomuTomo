@@ -1125,6 +1125,52 @@ rt {
   align-items: center;
 }
 
+.custom-url-panel {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(252, 228, 236, 0.72));
+  border: 1px solid rgba(233, 30, 99, 0.16);
+  box-shadow: 0 8px 20px rgba(233, 30, 99, 0.06);
+}
+
+.custom-url-panel__header h3 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.custom-url-panel__header p {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+}
+
+.custom-url-panel__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.custom-url-panel__form input[type="url"] {
+  flex: 1 1 320px;
+  min-width: 220px;
+  border: 1px solid rgba(233, 30, 99, 0.2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-primary);
+  transition: var(--transition);
+}
+
+.custom-url-panel__form input[type="url"]:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(233, 30, 99, 0.12);
+}
+
+.custom-url-panel__form .btn-primary {
+  min-width: 140px;
+}
+
 .news-limit-link.is-active {
   background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   color: #fff;
@@ -1276,6 +1322,86 @@ rt {
   font-size: 1.1rem;
   color: var(--text-primary);
   border: 2px solid #f8bbd9;
+}
+
+.evaluation-detail {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(233, 30, 99, 0.16);
+  background: rgba(252, 228, 236, 0.45);
+}
+
+.evaluation-detail__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.evaluation-detail__columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.evaluation-detail__column {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid rgba(233, 30, 99, 0.14);
+}
+
+.evaluation-detail__column h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: var(--primary-color);
+}
+
+.evaluation-detail__text {
+  line-height: 1.8;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.evaluation-token {
+  display: inline-block;
+  margin: 0 2px 4px 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.evaluation-token--match {
+  background: rgba(76, 175, 80, 0.16);
+  color: #2e7d32;
+}
+
+.evaluation-token--miss {
+  background: rgba(244, 67, 54, 0.16);
+  color: #b71c1c;
+  border-color: rgba(244, 67, 54, 0.18);
+}
+
+.evaluation-token--extra {
+  background: rgba(255, 152, 0, 0.16);
+  color: #e65100;
+}
+
+.evaluation-summary {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.evaluation-summary p {
+  margin: 0;
 }
 
 /* Config Header */
