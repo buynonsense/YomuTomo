@@ -14,11 +14,11 @@
       {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
-        <section class="card input-card">
+        <section class="card input-card input-card--expanded">
           <h2>📝 输入课文</h2>
           <form id="text-form" action="/process_text" method="post">
             <div class="input-group">
-              <textarea id="text" name="text" rows="8" required></textarea>
+              <textarea id="text" name="text" rows="14" required></textarea>
               <label for="text">日语课文</label>
             </div>
             <input type="hidden" id="model" name="model" value="" />

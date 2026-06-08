@@ -17,13 +17,8 @@
         <section class="card news-center-shell">
           <div class="news-center-intro">
             <div>
-              <h2>最近新闻</h2>
-              <p>当前展示 {{ limit }} 条。点击“生成文章”会把对应新闻送入后台处理。</p>
-            </div>
-            <div class="news-center-toolbar">
-              <a href="/news_center?limit=10" class="btn-secondary news-limit-link {% if limit == 10 %}is-active{% endif %}">10 条</a>
-              <a href="/news_center?limit=12" class="btn-secondary news-limit-link {% if limit == 12 %}is-active{% endif %}">12 条</a>
-              <a href="/news_center?limit=20" class="btn-secondary news-limit-link {% if limit == 20 %}is-active{% endif %}">20 条</a>
+              <h2>新闻中心</h2>
+              <p>浏览新闻并生成文章。</p>
             </div>
           </div>
 
@@ -55,7 +50,6 @@
                   {% endif %}
                   <div class="news-card__actions">
                     <button type="button" class="btn-primary news-crawl-btn">生成文章</button>
-                    <a href="{{ item.source_url }}" target="_blank" class="btn-secondary">阅读原文</a>
                   </div>
                 </article>
               {% endfor %}
