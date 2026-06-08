@@ -11,11 +11,7 @@
   <body>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="page-header">
-        <h1>🗂️ 我的文章</h1>
-        <p>按最近更新排序。</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
       <main class="main-content">
         <section class="card">
           <h2 style="margin-bottom:16px;">已保存</h2>
@@ -129,6 +125,7 @@
     </button>
     <script src="/static/js/modules/ai-config.js"></script>
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/dashboard.js"></script>
   </body>
 </html>

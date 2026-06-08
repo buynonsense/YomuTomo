@@ -11,29 +11,9 @@
   <body>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="hero">
-        <h1>🌸 YomuTomo</h1>
-        <p>一款日语阅读与跟读应用</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
-        <section class="card config-card">
-          <div class="config-header">
-            <h2>⚙️ AI配置</h2>
-            <div class="config-header__actions">
-              <button id="config-btn" class="btn-config" type="button">配置AI设置</button>
-              {% if user %}
-                <button id="user-settings-btn" class="btn-secondary" type="button">用户设置</button>
-              {% endif %}
-            </div>
-          </div>
-          <div id="config-status" class="config-status">
-            <span id="status-icon">❌</span>
-            <span id="status-text">未配置</span>
-          </div>
-        </section>
-
         <section class="card input-card">
           <h2>📝 输入课文</h2>
           <form id="text-form" action="/process_text" method="post">
@@ -47,59 +27,6 @@
         </section>
       </main>
 
-      <!-- AI配置弹窗 -->
-      <div id="config-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-            <h3>🤖 AI配置设置</h3>
-            <button id="close-modal" class="btn-close" type="button">✕</button>
-            </div>
-          <div class="modal-body">
-            <div class="input-group">
-              <input type="text" id="modal-api-key" autocomplete="off" />
-              <label for="modal-api-key">API Key</label>
-            </div>
-            <div class="input-group">
-              <input type="text" id="modal-base-url" autocomplete="off" />
-              <label for="modal-base-url">Base URL</label>
-            </div>
-            <div class="input-group">
-              <input type="text" id="modal-model" autocomplete="off" />
-              <label for="modal-model">AI模型 (可自定义)</label>
-            </div>
-          </div>
-            <div class="modal-footer">
-            <button id="save-config" class="btn-primary" type="button">保存配置</button>
-            <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
-            </div>
-        </div>
-      </div>
-
-      <!-- 用户设置弹窗 -->
-      <div id="settings-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-            <h3>👤 用户设置</h3>
-            <button id="close-settings-modal" class="btn-close" type="button">✕</button>
-            </div>
-          <div class="modal-body">
-            <div class="input-group">
-              <label for="user-level" class="form-label">日语能力等级 (JLPT)</label>
-              <select id="user-level" class="form-select">
-                <option value="1">N5 - 初学者 (基础词汇和语法)</option>
-                <option value="2">N4 - 基础水平 (日常会话)</option>
-                <option value="3">N3 - 中级水平 (一般性话题)</option>
-                <option value="4">N2 - 中高级水平 (抽象话题)</option>
-                <option value="5">N1 - 高级水平 (复杂话题)</option>
-              </select>
-            </div>
-          </div>
-            <div class="modal-footer">
-            <button id="save-settings" class="btn-primary" type="button">保存设置</button>
-            <button id="cancel-settings" class="btn-secondary" type="button">关闭</button>
-            </div>
-        </div>
-      </div>
     </div>
     <script>
       // 处理表单提交，显示loading页面
@@ -136,82 +63,11 @@
           if (modelInput) modelInput.value = config.model;
         }
 
-        // 设置按钮事件
-        const settingsBtn = document.getElementById('user-settings-btn');
-        const settingsModal = document.getElementById('settings-modal');
-        const closeSettingsModal = document.getElementById('close-settings-modal');
-        const cancelSettings = document.getElementById('cancel-settings');
-        const saveSettings = document.getElementById('save-settings');
-        const userLevelSelect = document.getElementById('user-level');
-
-        if (settingsBtn) {
-          settingsBtn.addEventListener('click', function() {
-            // 获取当前用户等级
-            fetch('/get_user_level')
-              .then(response => response.json())
-              .then(data => {
-                if (data.level) {
-                  userLevelSelect.value = data.level;
-                }
-                settingsModal.classList.add('show');
-              })
-              .catch(error => {
-                console.error('Error fetching user level:', error);
-                settingsModal.classList.add('show');
-              });
-          });
-        }
-
-        if (closeSettingsModal) {
-          closeSettingsModal.addEventListener('click', function() {
-            settingsModal.classList.remove('show');
-          });
-        }
-
-        if (cancelSettings) {
-          cancelSettings.addEventListener('click', function() {
-            settingsModal.classList.remove('show');
-          });
-        }
-
-        if (saveSettings) {
-          saveSettings.addEventListener('click', async function() {
-            const level = userLevelSelect.value;
-            
-            try {
-              const response = await fetch('/update_user_level', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ level: parseInt(level) })
-              });
-              
-              const result = await response.json();
-              
-              if (response.ok) {
-                showToast('设置保存成功！', 'success');
-                settingsModal.classList.remove('show');
-              } else {
-                showToast('保存失败：' + (result.error || '未知错误'), 'error');
-              }
-            } catch (error) {
-              showToast('网络错误，请稍后重试', 'error');
-              console.error('Save settings error:', error);
-            }
-          });
-        }
-
-        // 点击弹窗外部关闭
-        window.addEventListener('click', function(event) {
-          if (event.target === settingsModal) {
-            settingsModal.classList.remove('show');
-          }
-        });
       });
     </script>
     <script src="/static/js/common.js"></script>
     <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/modules/speech-recognition.js"></script>
     <script src="/static/js/modules/text-highlight.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>

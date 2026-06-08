@@ -1,0 +1,77 @@
+{% if user %}
+<div id="settings-modal" class="modal" aria-hidden="true">
+  <div class="modal-content settings-modal-content">
+    <div class="modal-header">
+      <h3>设置</h3>
+      <button id="close-settings-modal" class="btn-close" type="button" aria-label="关闭设置">✕</button>
+    </div>
+
+    <div class="settings-tabs" role="tablist" aria-label="设置选项">
+      <button id="settings-tab-ai" class="settings-tab is-active" type="button" data-settings-tab="ai" role="tab" aria-selected="true">AI配置</button>
+      <button id="settings-tab-user" class="settings-tab" type="button" data-settings-tab="user" role="tab" aria-selected="false">用户设置</button>
+    </div>
+
+    <div class="modal-body settings-modal-body">
+      <section id="settings-panel-ai" class="settings-panel is-active" data-settings-panel="ai" role="tabpanel" aria-labelledby="settings-tab-ai">
+        <div class="settings-section-header">
+          <div class="settings-section-header__text">
+            <h4>🤖 AI配置</h4>
+            <p>配置后可直接用于文章生成、注音和翻译。</p>
+          </div>
+          <div id="config-status" class="config-status config-status--inline">
+            <span id="status-icon">❌</span>
+            <span id="status-text">未配置</span>
+          </div>
+        </div>
+
+        <div class="settings-form-grid">
+          <div class="input-group">
+            <input type="text" id="modal-api-key" autocomplete="off" />
+            <label for="modal-api-key">API Key</label>
+          </div>
+          <div class="input-group">
+            <input type="text" id="modal-base-url" autocomplete="off" />
+            <label for="modal-base-url">Base URL</label>
+          </div>
+          <div class="input-group">
+            <input type="text" id="modal-model" autocomplete="off" />
+            <label for="modal-model">AI模型 (可自定义)</label>
+          </div>
+        </div>
+
+        <div class="settings-panel__footer">
+          <button id="save-config" class="btn-primary" type="button">测试并保存</button>
+          <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
+        </div>
+      </section>
+
+      <section id="settings-panel-user" class="settings-panel" data-settings-panel="user" role="tabpanel" aria-labelledby="settings-tab-user" hidden>
+        <div class="config-header">
+          <div>
+            <h4>👤 用户设置</h4>
+            <p>调整当前阅读难度等级，让内容更贴近你的水平。</p>
+          </div>
+        </div>
+
+        <div class="settings-form-grid">
+          <div class="input-group">
+            <label for="user-level" class="form-label">日语能力等级 (JLPT)</label>
+            <select id="user-level" class="form-select">
+              <option value="1">N5 - 初学者 (基础词汇和语法)</option>
+              <option value="2">N4 - 基础水平 (日常会话)</option>
+              <option value="3">N3 - 中级水平 (一般性话题)</option>
+              <option value="4">N2 - 中高级水平 (抽象话题)</option>
+              <option value="5">N1 - 高级水平 (复杂话题)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-panel__footer">
+          <button id="save-settings" class="btn-primary" type="button">保存设置</button>
+          <button id="cancel-settings" class="btn-secondary" type="button">关闭</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endif %}

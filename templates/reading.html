@@ -21,21 +21,21 @@
     </button>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="page-header">
-        <h1>🎤 {{ title }}</h1>
-        {% if source_url %}
-        <div class="source-link" style="margin: 10px 0;">
-          <a href="{{ source_url }}" target="_blank" class="btn-secondary" title="查看原文">
-            🔗 查看原文
-          </a>
-        </div>
-        {% endif %}
-        <p>跟随高亮部分朗读，提升发音准确度</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
         <section class="card text-card">
+          <div class="card-heading-row">
+            <div>
+              <h2>🎤 {{ title }}</h2>
+              <p>跟随高亮部分朗读，提升发音准确度。</p>
+            </div>
+            {% if source_url %}
+            <a href="{{ source_url }}" target="_blank" class="btn-secondary" title="查看原文">
+              🔗 查看原文
+            </a>
+            {% endif %}
+          </div>
           <h2>📖 课文内容</h2>
           <!-- 隐藏的数据存储，用于JavaScript访问 -->
           <div id="text-data" style="display: none;">
@@ -150,6 +150,8 @@
     <script src="/static/js/modules/furigana-filter.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/reading.js"></script>
   </body>
 </html>
