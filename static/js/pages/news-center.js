@@ -98,22 +98,32 @@
       return false;
     }
 
-    function hasNotifiedTask(taskId) {
-      if (!taskId) {
+    function makeNotificationKey(taskId, status, message) {
+      if (!taskId || !status) {
+        return '';
+      }
+
+      return [String(taskId), String(status), String(message || '').trim()].join('::');
+    }
+
+    function hasNotifiedTask(taskId, status, message) {
+      const key = makeNotificationKey(taskId, status, message);
+      if (!key) {
         return false;
       }
 
-      return getNotifiedTaskIds().includes(String(taskId));
+      return getNotifiedTaskIds().includes(key);
     }
 
-    function markTaskNotified(taskId) {
-      if (!taskId) {
+    function markTaskNotified(taskId, status, message) {
+      const key = makeNotificationKey(taskId, status, message);
+      if (!key) {
         return;
       }
 
       try {
         const current = new Set(getNotifiedTaskIds());
-        current.add(String(taskId));
+        current.add(key);
         sessionStorage.setItem(NOTIFIED_TASK_IDS_KEY, JSON.stringify(Array.from(current)));
       } catch (error) {
         console.error('保存已通知任务列表失败', error);
@@ -170,24 +180,33 @@
       clearTaskState();
 
       if (data.status === 'completed') {
+        const message = getToastMessage(data, data.processed_articles <= 0 ? '新闻生成失败，请稍后重试。' : '新闻生成完成，可以前往“我的文章”查看。');
+
         if (getProcessedArticlesCount(data) <= 0) {
-          if (taskId && !hasNotifiedTask(taskId)) {
-            markTaskNotified(taskId);
-            notify(getToastMessage(data, '新闻生成失败，请稍后重试。'), 'error');
+          if (taskId && !hasNotifiedTask(taskId, data.status, message)) {
+            markTaskNotified(taskId, data.status, message);
+            notify(message, 'error');
           }
           return;
         }
 
-        if (taskId && !hasNotifiedTask(taskId)) {
-          markTaskNotified(taskId);
-          notify(getToastMessage(data, '新闻生成完成，可以前往“我的文章”查看。'), 'success');
+        if (taskId && !hasNotifiedTask(taskId, data.status, message)) {
+          markTaskNotified(taskId, data.status, message);
+          notify(message, 'success');
           window.setTimeout(() => window.location.reload(), 1500);
         }
         return;
       }
 
       if (data.status === 'failed') {
-        notify(getToastMessage(data, '新闻生成失败，请稍后重试。'), 'error');
+        const message = getToastMessage(data, '新闻生成失败，请稍后重试。');
+        if (taskId && hasNotifiedTask(taskId, data.status, message)) {
+          return;
+        }
+        if (taskId) {
+          markTaskNotified(taskId, data.status, message);
+        }
+        notify(message, 'error');
         return;
       }
     }

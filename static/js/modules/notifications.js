@@ -7,9 +7,9 @@
     const overlay = document.getElementById('global-notifications-overlay');
     const closeButton = document.getElementById('global-notifications-close');
     const list = document.getElementById('global-notifications-list');
-    const markAllButton = document.getElementById('global-notifications-mark-all');
+    const deleteAllButton = document.getElementById('global-notifications-delete-all');
 
-    if (!toggleButton || !overlay || !closeButton || !list || !markAllButton || !badge) {
+    if (!toggleButton || !overlay || !closeButton || !list || !deleteAllButton || !badge) {
       return;
     }
 
@@ -68,7 +68,58 @@
       }
     }
 
-    function handleNotificationClick(event) {
+    async function deleteNotifications(notificationId) {
+      const body = notificationId ? { notification_id: notificationId } : { all: true };
+      const response = await fetch('/notifications/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || '删除通知失败');
+      }
+      await loadNotifications();
+      const unreadResponse = await fetch('/notifications/unread-count');
+      const unreadData = await unreadResponse.json();
+      if (unreadResponse.ok && unreadData.success) {
+        setBadgeCount(unreadData.unread_count || 0);
+      }
+    }
+
+    function handleNotificationActionClick(event) {
+      const clearButton = event.target.closest('.notifications-item__clear');
+      if (clearButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const article = clearButton.closest('.notifications-item');
+        const notificationId = article ? article.dataset.notificationId : '';
+        if (!notificationId) {
+          return;
+        }
+        void deleteNotifications(notificationId).catch((error) => {
+          console.error('删除单条通知失败', error);
+          if (typeof showToast === 'function') {
+            showToast(error.message || '删除通知失败', 'error');
+          }
+        });
+        return;
+      }
+
+      const actionButton = event.target.closest('.notifications-item__action');
+      if (actionButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const article = actionButton.closest('.notifications-item');
+        const targetUrl = article ? article.dataset.notificationUrl || '' : '';
+        if (!targetUrl) {
+          return;
+        }
+
+        window.location.href = targetUrl;
+        return;
+      }
+
       const article = event.target.closest('.notifications-item');
       if (!article) {
         return;
@@ -79,7 +130,9 @@
         return;
       }
 
-      window.location.href = targetUrl;
+      if (article.contains(event.target)) {
+        window.location.href = targetUrl;
+      }
     }
 
     function renderItems(items) {
@@ -92,16 +145,17 @@
         const unreadClass = item.is_read ? '' : ' is-unread';
         const timeText = formatTime(item.created_at);
         const url = buildNotificationLink(item);
-        const action = url ? '<span class="notifications-item__action">查看</span>' : '';
+        const action = url ? '<button type="button" class="notifications-item__action">查看</button>' : '';
+        const clearButton = '<button type="button" class="notifications-item__clear">清除</button>';
         return `
-          <article class="notifications-item${unreadClass}" data-notification-id="${item.id}" data-notification-url="${url}">
+          <article class="notifications-item${unreadClass}" data-notification-id="${item.id}" data-notification-url="${url}" tabindex="0" role="button" aria-label="通知 ${item.title}">
             <div class="notifications-item__meta">
               <span class="notifications-item__type">${item.type}</span>
               <span class="notifications-item__time">${timeText}</span>
             </div>
             <h4 class="notifications-item__title">${item.title}</h4>
             <p class="notifications-item__message">${item.message}</p>
-            <div class="notifications-item__footer">${action}</div>
+            <div class="notifications-item__footer">${action}${clearButton}</div>
           </article>
         `;
       }).join('');
@@ -126,18 +180,18 @@
       setBadgeCount(data.unread_count || 0);
     }
 
-    async function markAllRead() {
-      const response = await fetch('/notifications/mark-read', {
+    async function deleteAllNotifications() {
+      const response = await fetch('/notifications/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.message || '标记已读失败');
+        throw new Error(data.message || '清除通知失败');
       }
-      setBadgeCount(0);
       await loadNotifications();
+      setBadgeCount(0);
     }
 
     function openPanel() {
@@ -157,8 +211,13 @@
     async function openAndRefresh() {
       try {
         openPanel();
+        await fetch('/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: true }),
+        });
+        await fetchUnreadCount();
         await loadNotifications();
-        await markAllRead();
       } catch (error) {
         console.error('打开通知面板失败', error);
         if (typeof showToast === 'function') {
@@ -181,11 +240,45 @@
         closePanel();
       }
     });
-    markAllButton.addEventListener('click', function () {
-      void markAllRead();
+    deleteAllButton.addEventListener('click', function () {
+      void deleteAllNotifications().catch((error) => {
+        console.error('一键清除通知失败', error);
+        if (typeof showToast === 'function') {
+          showToast(error.message || '清除通知失败', 'error');
+        }
+      });
     });
 
-    list.addEventListener('click', handleNotificationClick);
+    list.addEventListener('click', handleNotificationActionClick);
+    list.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      const clearButton = event.target.closest('.notifications-item__clear');
+      if (clearButton) {
+        event.preventDefault();
+        clearButton.click();
+        return;
+      }
+
+      const actionButton = event.target.closest('.notifications-item__action');
+      if (actionButton) {
+        event.preventDefault();
+        actionButton.click();
+        return;
+      }
+
+      const target = event.target.closest('.notifications-item');
+      if (!target) {
+        return;
+      }
+
+      const targetUrl = target.dataset.notificationUrl || '';
+      if (targetUrl) {
+        window.location.href = targetUrl;
+      }
+    });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape' && isOpen) {
         closePanel();
