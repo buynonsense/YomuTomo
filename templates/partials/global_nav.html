@@ -1,0 +1,30 @@
+<nav class="global-nav" aria-label="全局导航">
+  <div class="global-nav__inner">
+    <div class="global-nav__left">
+      <a href="/" class="global-nav__brand">🌸 YomuTomo</a>
+    </div>
+
+    <div class="global-nav__center">
+      <a href="/" class="global-nav__link{% if request.url.path == '/' %} is-active{% endif %}">首页</a>
+      {% if user %}
+        <a href="/news_center" class="global-nav__link{% if request.url.path.startswith('/news_center') %} is-active{% endif %}">新闻中心</a>
+        <a href="/dashboard" class="global-nav__link{% if request.url.path.startswith('/dashboard') %} is-active{% endif %}">我的文章</a>
+        <a href="/vocabulary" class="global-nav__link{% if request.url.path.startswith('/vocabulary') %} is-active{% endif %}">我的生词本</a>
+      {% else %}
+        <span class="global-nav__link is-muted">新闻中心</span>
+      {% endif %}
+    </div>
+
+    <div class="global-nav__right">
+      {% if user %}
+        <span class="global-nav__user">👋 {{ user.email }}</span>
+        <form method="post" action="/logout" class="global-nav__form">
+          <button type="submit" class="global-nav__action global-nav__action--logout">退出登录</button>
+        </form>
+      {% else %}
+        <a href="/login" class="global-nav__action global-nav__action--login">登录</a>
+        <a href="/register" class="global-nav__action global-nav__action--register">注册</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>

@@ -211,39 +211,6 @@ body {
   opacity: 0.8;
 }
 
-/* Navigation */
-.nav-bar {
-  margin-bottom: 20px;
-}
-
-.nav-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  text-decoration: none;
-  border-radius: 25px;
-  backdrop-filter: blur(10px);
-  transition: var(--transition);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  cursor: pointer; /* 统一手型指针 */
-}
-
-.nav-button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-}
-/* 确保按钮元素(nav-button类)无默认按钮背景/边框差异 */
-button.nav-button, .nav-bar button.nav-button {
-  background: rgba(255,255,255,0.2);
-  border: 1px solid rgba(255,255,255,0.3);
-}
-button.nav-button:hover, .nav-bar button.nav-button:hover {
-  background: rgba(255,255,255,0.3);
-}
-
 /* Card Component */
 .card {
   background: var(--card-bg);
@@ -483,13 +450,6 @@ button.nav-button:hover, .nav-bar button.nav-button:hover {
   .control-buttons button {
     width: 100%;
     margin: 5px 0;
-  }
-
-  /* 移动端导航优化 */
-  .nav-button {
-    padding: 12px 20px;
-    font-size: 1rem;
-    min-height: 44px;
   }
 
   /* 移动端模态框优化 */

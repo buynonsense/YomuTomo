@@ -7,34 +7,31 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="alternate icon" href="/static/favicon.ico" />
     <link rel="stylesheet" href="/static/css/main.css" />
-  <!-- PDF 依赖 -->
-  <script src="/static/js/html2canvas.min.js"></script>
-  <script src="/static/js/jspdf.umd.min.js"></script>
+    <!-- PDF 依赖 -->
+    <script src="/static/js/html2canvas.min.js"></script>
+    <script src="/static/js/jspdf.umd.min.js"></script>
   </head>
   <body>
     <!-- 回到顶部按钮 -->
-    <button id="back-to-top" class="back-to-top-btn" title="回到顶部" type="button">
+      <button id="back-to-top" class="back-to-top-btn" title="回到顶部" type="button">
       <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2L13.5 7H19L14.5 10.5L16 15.5L12 12.5L8 15.5L9.5 10.5L5 7H10.5L12 2Z" fill="currentColor"/>
         <path d="M10 19L12 16L14 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
     <div class="container">
-      <nav class="nav-bar">
-        <a href="/" class="nav-button">🏠 回到首页</a>
-        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
-      </nav>
+      {% include "partials/global_nav.html" %}
 
       <header class="page-header">
-  <h1>🎤 {{ title }}</h1>
-  {% if source_url %}
-  <div class="source-link" style="margin: 10px 0;">
-    <a href="{{ source_url }}" target="_blank" class="btn-secondary" title="查看原文">
-      🔗 查看原文
-    </a>
-  </div>
-  {% endif %}
-  <p>跟随高亮部分朗读，提升发音准确度</p>
+        <h1>🎤 {{ title }}</h1>
+        {% if source_url %}
+        <div class="source-link" style="margin: 10px 0;">
+          <a href="{{ source_url }}" target="_blank" class="btn-secondary" title="查看原文">
+            🔗 查看原文
+          </a>
+        </div>
+        {% endif %}
+        <p>跟随高亮部分朗读，提升发音准确度</p>
       </header>
 
       <main class="main-content">

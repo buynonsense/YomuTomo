@@ -10,31 +10,23 @@
   </head>
   <body>
     <div class="container">
+      {% include "partials/global_nav.html" %}
+
       <header class="hero">
         <h1>🌸 YomuTomo</h1>
         <p>一款日语阅读与跟读应用</p>
       </header>
 
-      <nav class="nav-bar">
-        {% if user %}
-          <span class="user-pill">👋 {{ user.email }}</span>
-          <a href="/dashboard" class="nav-button">📚 我的文章</a>
-          <button id="crawl-news-btn" class="nav-button">📰 新闻中心</button>
-          <button id="settings-btn" class="nav-button">⚙️ 设置</button>
-          <form method="post" action="/logout">
-            <button type="submit" class="nav-button">🚪 退出登录</button>
-          </form>
-        {% else %}
-          <a href="/login" class="nav-button">登录</a>
-          <a href="/register" class="nav-button">注册</a>
-        {% endif %}
-      </nav>
-
       <main class="main-content">
         <section class="card config-card">
           <div class="config-header">
             <h2>⚙️ AI配置</h2>
-            <button id="config-btn" class="btn-config">配置AI设置</button>
+            <div class="config-header__actions">
+              <button id="config-btn" class="btn-config" type="button">配置AI设置</button>
+              {% if user %}
+                <button id="user-settings-btn" class="btn-secondary" type="button">用户设置</button>
+              {% endif %}
+            </div>
           </div>
           <div id="config-status" class="config-status">
             <span id="status-icon">❌</span>
@@ -58,10 +50,10 @@
       <!-- AI配置弹窗 -->
       <div id="config-modal" class="modal">
         <div class="modal-content">
-          <div class="modal-header">
+            <div class="modal-header">
             <h3>🤖 AI配置设置</h3>
-            <button id="close-modal" class="btn-close">✕</button>
-          </div>
+            <button id="close-modal" class="btn-close" type="button">✕</button>
+            </div>
           <div class="modal-body">
             <div class="input-group">
               <input type="text" id="modal-api-key" autocomplete="off" />
@@ -76,20 +68,20 @@
               <label for="modal-model">AI模型 (可自定义)</label>
             </div>
           </div>
-          <div class="modal-footer">
-            <button id="save-config" class="btn-primary">保存配置</button>
-            <button id="cancel-config" class="btn-secondary">关闭</button>
-          </div>
+            <div class="modal-footer">
+            <button id="save-config" class="btn-primary" type="button">保存配置</button>
+            <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
+            </div>
         </div>
       </div>
 
       <!-- 用户设置弹窗 -->
       <div id="settings-modal" class="modal">
         <div class="modal-content">
-          <div class="modal-header">
+            <div class="modal-header">
             <h3>👤 用户设置</h3>
-            <button id="close-settings-modal" class="btn-close">✕</button>
-          </div>
+            <button id="close-settings-modal" class="btn-close" type="button">✕</button>
+            </div>
           <div class="modal-body">
             <div class="input-group">
               <label for="user-level" class="form-label">日语能力等级 (JLPT)</label>
@@ -102,10 +94,10 @@
               </select>
             </div>
           </div>
-          <div class="modal-footer">
-            <button id="save-settings" class="btn-primary">保存设置</button>
-            <button id="cancel-settings" class="btn-secondary">关闭</button>
-          </div>
+            <div class="modal-footer">
+            <button id="save-settings" class="btn-primary" type="button">保存设置</button>
+            <button id="cancel-settings" class="btn-secondary" type="button">关闭</button>
+            </div>
         </div>
       </div>
     </div>
@@ -144,16 +136,8 @@
           if (modelInput) modelInput.value = config.model;
         }
 
-        // 爬取新闻按钮事件
-        const crawlBtn = document.getElementById('crawl-news-btn');
-        if (crawlBtn) {
-          crawlBtn.addEventListener('click', function() {
-            window.location.href = '/news_center';
-          });
-        }
-
         // 设置按钮事件
-        const settingsBtn = document.getElementById('settings-btn');
+        const settingsBtn = document.getElementById('user-settings-btn');
         const settingsModal = document.getElementById('settings-modal');
         const closeSettingsModal = document.getElementById('close-settings-modal');
         const cancelSettings = document.getElementById('cancel-settings');

@@ -10,12 +10,7 @@
   </head>
   <body>
     <div class="container">
-      <nav class="nav-bar">
-        {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
-        <a href="/" class="nav-button">🏠 首页</a>
-        <a href="/dashboard" class="nav-button">📚 我的文章</a>
-        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
-      </nav>
+      {% include "partials/global_nav.html" %}
 
       <header class="page-header">
         <h1>📰 NHK 新闻中心</h1>

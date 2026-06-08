@@ -10,15 +10,8 @@
   </head>
   <body>
     <div class="container">
-      <nav class="nav-bar">
-        {% if user %}<span class="user-pill">👋 {{ user.email }}</span>{% endif %}
-        <a href="/" class="nav-button">🏠 首页</a>
-        <a href="/dashboard" class="nav-button">📚 我的文章</a>
-        <a href="/vocabulary" class="nav-button">📒 我的生词本</a>
-        <form method="post" action="/logout">
-          <button type="submit" class="nav-button">🚪 退出登录</button>
-        </form>
-      </nav>
+      {% include "partials/global_nav.html" %}
+
       <header class="page-header">
         <h1>🗂️ 我的文章</h1>
         <p>按最近更新排序。</p>
@@ -29,7 +22,7 @@
           {% if articles and articles|length > 0 %}
           <div class="article-grid">
             {% for a in articles %}
-            <div class="article-bubble" data-article-id="{{ a.id }}" data-title="{{ a.title | replace('"',' ') | replace('\'',' ') }}">
+            <div class="article-bubble" data-article-id="{{ a.id }}" data-title="{{ a.title | e }}">
               <div class="bubble-main" data-article-id="{{ a.id }}" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
@@ -40,7 +33,7 @@
                 🔗
               </a>
               {% endif %}
-              <button class="bubble-menu-btn" data-article-id="{{ a.id }}" aria-label="更多操作">⋯</button>
+              <button type="button" class="bubble-menu-btn" data-article-id="{{ a.id }}" aria-label="更多操作">⋯</button>
             </div>
             {% endfor %}
           </div>
@@ -53,9 +46,9 @@
           {% set base = '/dashboard?size=' ~ size ~ '&page=' %}
           {% set prev_page = page-1 if page>1 else 1 %}
           {% set next_page = page+1 if page<total_pages else total_pages %}
-          <a href="{{ base ~ prev_page }}" class="nav-button pagination-btn {% if page==1 %}disabled{% endif %}" style="padding:6px 14px;">上一页</a>
+          <a href="{{ base ~ prev_page }}" class="btn-secondary pagination-btn {% if page==1 %}disabled{% endif %}" style="padding:6px 14px;">上一页</a>
           <span class="pagination-info">第 {{ page }} / {{ total_pages }} 页（共 {{ total_items }} 篇）</span>
-          <a href="{{ base ~ next_page }}" class="nav-button pagination-btn {% if page==total_pages %}disabled{% endif %}" style="padding:6px 14px;">下一页</a>
+          <a href="{{ base ~ next_page }}" class="btn-secondary pagination-btn {% if page==total_pages %}disabled{% endif %}" style="padding:6px 14px;">下一页</a>
         </nav>
         {% endif %}
       </main>
@@ -65,7 +58,7 @@
         <div class="action-header">
           <span id="ap-emoji">📝</span>
           <span id="ap-title" class="ap-title">标题</span>
-          <button class="ap-close" onclick="closeActionPanel()">✕</button>
+          <button class="ap-close" type="button" onclick="closeActionPanel()">✕</button>
         </div>
         <form id="rename-form" method="post" class="ap-row">
           <input type="text" name="title" id="ap-input" placeholder="新标题" />
@@ -128,7 +121,7 @@
     </script>
 
     <!-- 回到顶部按钮 -->
-    <button id="back-to-top" class="back-to-top-btn" title="回到顶部">
+      <button id="back-to-top" class="back-to-top-btn" title="回到顶部" type="button">
       <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2L13.5 7H19L14.5 10.5L16 15.5L12 12.5L8 15.5L9.5 10.5L5 7H10.5L12 2Z" fill="currentColor"/>
         <path d="M10 19L12 16L14 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>

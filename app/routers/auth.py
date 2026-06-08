@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.db import get_db
+from app.routers.context import get_current_user
 from app.model.models import User
 from app.services.services import hash_password, is_legacy_bcrypt_hash, verify_password
 
@@ -10,19 +11,12 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter(prefix="", tags=["认证"])
 
 
-def get_current_user(request: Request, db: Session):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return None
-    return db.query(User).filter(User.id == user_id).first()
-
-
 @router.get("/register", response_class=HTMLResponse, summary="注册页面")
 async def register_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse(request, "register.html")
+    return templates.TemplateResponse(request, "register.html", {"user": user})
 
 
 @router.post("/register", summary="提交注册")
@@ -35,15 +29,15 @@ async def register(
 ):
     # Validate password confirmation
     if password != confirm_password:
-        return templates.TemplateResponse(request, "register.html", {"error": "两次输入的密码不一致"})
+        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "两次输入的密码不一致"})
 
     # Validate password length
     if len(password) < 6:
-        return templates.TemplateResponse(request, "register.html", {"error": "密码长度至少需要6个字符"})
+        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "密码长度至少需要6个字符"})
 
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        return templates.TemplateResponse(request, "register.html", {"error": "邮箱已被注册"})
+        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "邮箱已被注册"})
     password_hash = hash_password(password)
     user = User(email=email, password_hash=password_hash)
     db.add(user)
@@ -58,7 +52,7 @@ async def login_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse(request, "login.html")
+    return templates.TemplateResponse(request, "login.html", {"user": user})
 
 
 @router.post("/login", summary="提交登录")
@@ -70,7 +64,7 @@ async def login(
 ):
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.password_hash):
-        return templates.TemplateResponse(request, "login.html", {"error": "邮箱或密码错误"})
+        return templates.TemplateResponse(request, "login.html", {"user": get_current_user(request, db), "error": "邮箱或密码错误"})
 
     if is_legacy_bcrypt_hash(user.password_hash):
         user.password_hash = hash_password(password)

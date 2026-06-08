@@ -1,29 +1,199 @@
 /* Common reusable styles - extracted from inline styles */
 
-/* User pill component */
-.user-pill {
+/* Global navigation */
+.global-nav {
+  position: sticky;
+  top: 16px;
+  z-index: 1000;
+  margin-bottom: 24px;
+}
+
+.global-nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 10px 30px rgba(136, 14, 79, 0.12);
+}
+
+.global-nav__left,
+.global-nav__center,
+.global-nav__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.global-nav__left {
+  flex: 0 0 auto;
+}
+
+.global-nav__center {
+  flex: 1 1 auto;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.global-nav__right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.global-nav__brand,
+.global-nav__link,
+.global-nav__action,
+.global-nav__user {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 40px;
   padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #333;
-  border-radius: 22px;
+  border-radius: 999px;
   font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(4px);
+  line-height: 1;
+  white-space: nowrap;
 }
 
-/* Navigation button modifications */
-.nav-bar .nav-button {
-  border-radius: 22px !important;
-  margin-left: 10px;
+.global-nav__brand {
+  background: rgba(255, 245, 235, 0.72);
+  color: #7a4a21;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.2px;
 }
 
-/* Inline form styling */
-.nav-bar form {
-  display: inline;
+.global-nav__link,
+.global-nav__action {
+  border: 1px solid rgba(122, 74, 33, 0.16);
+  background: rgba(255, 245, 235, 0.38);
+  color: #7a4a21;
+  text-decoration: none;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.global-nav__link:hover,
+.global-nav__action:hover,
+.global-nav__brand:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 247, 239, 0.56);
+  border-color: rgba(122, 74, 33, 0.24);
+}
+
+.global-nav__link.is-active {
+  background: #f1dcc8;
+  color: #7a4a21;
+  font-weight: 700;
+  border-color: rgba(122, 74, 33, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(122, 74, 33, 0.06);
+}
+
+.global-nav__link.is-muted {
+  opacity: 0.75;
+  color: #8b5a33;
+}
+
+.global-nav__user {
+  background: rgba(255, 245, 235, 0.44);
+  color: #7a4a21;
+  font-weight: 600;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.global-nav__form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.global-nav__action {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.global-nav__action--login {
+  background: rgba(255, 245, 235, 0.42);
+  color: #7a4a21;
+}
+
+.global-nav__action--register {
+  background: rgba(161, 94, 44, 0.78);
+  color: #fff;
+  border-color: rgba(122, 74, 33, 0.24);
+}
+
+.global-nav__action--logout {
+  background: rgba(122, 74, 33, 0.86);
+  color: #fff;
+  border-color: rgba(122, 74, 33, 0.35);
+}
+
+.global-nav__action--login:hover,
+.global-nav__action--register:hover,
+.global-nav__action--logout:hover {
+  background: rgba(141, 87, 44, 0.94);
+  color: #fff;
+}
+
+.global-nav__action[type="submit"] {
+  appearance: none;
+}
+
+.global-nav__brand:focus-visible,
+.global-nav__link:focus-visible,
+.global-nav__action:focus-visible {
+  outline: 2px solid rgba(122, 74, 33, 0.35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 960px) {
+  .global-nav__inner {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .global-nav__left,
+  .global-nav__center,
+  .global-nav__right {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .global-nav__right {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .global-nav {
+    top: 10px;
+    margin-bottom: 18px;
+  }
+
+  .global-nav__inner {
+    padding: 12px;
+    gap: 10px;
+    border-radius: 20px;
+  }
+
+  .global-nav__brand,
+  .global-nav__link,
+  .global-nav__action,
+  .global-nav__user {
+    min-height: 36px;
+    padding: 7px 12px;
+    font-size: 13px;
+  }
 }
 
 /* Pagination styles */

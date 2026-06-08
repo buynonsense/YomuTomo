@@ -99,6 +99,11 @@ make test  # 即 pytest
 make format && make lint
 ```
 
+## Docker 验证
+
+- 修改完成后，如果项目支持 Docker，必须在 Docker 中启动并验证可访问性
+- 用户明确表示要看效果时，不能只给出代码改动，必须把服务跑起来并确认页面可打开
+
 ## 已知问题 / 约束
 
 - AI 客户端使用 `asyncio.run()` 在 `ThreadPoolExecutor` 内部执行异步请求 (`services.py:339-349`)

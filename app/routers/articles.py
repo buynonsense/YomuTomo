@@ -1,10 +1,12 @@
 import json
+from typing import Optional
 from fastapi import APIRouter, Request, Form, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db import get_db
 from app.model.models import User, Article
+from app.routers.context import get_current_user
 from app.services.ai_client_async import AIClient, AIClientError
 from app.services import services as service_module
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
@@ -23,14 +25,7 @@ log_with_time = service_module.log_with_time
 router = APIRouter(prefix="", tags=["文章"])
 
 
-def get_current_user(request: Request, db: Session):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return None
-    return db.query(User).filter(User.id == user_id).first()
-
-
-def require_login(request: Request, db: Session) -> User | None:
+def require_login(request: Request, db: Session) -> Optional[User]:
     user = get_current_user(request, db)
     if not user:
         return None
@@ -83,10 +78,11 @@ async def dashboard(
 
 
 @router.get("/loading", response_class=HTMLResponse, summary="显示处理中页面")
-async def show_loading(request: Request):
+async def show_loading(request: Request, db: Session = Depends(get_db)):
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
-    return templates.TemplateResponse(request, "loading.html")
+    user = get_current_user(request, db)
+    return templates.TemplateResponse(request, "loading.html", {"user": user})
 
 
 @router.get("/news_center", response_class=HTMLResponse, summary="NHK 新闻中心")
@@ -117,22 +113,24 @@ async def news_center(
 
 
 @router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")
-async def show_result(request: Request):
+async def show_result(request: Request, db: Session = Depends(get_db)):
     # 从sessionStorage获取处理结果
     from fastapi.templating import Jinja2Templates
     templates = Jinja2Templates(directory="templates")
+    user = get_current_user(request, db)
 
     # 这里需要从请求中获取数据，暂时返回一个占位符
     return templates.TemplateResponse(
         request,
         "reading.html",
         {
+            "user": user,
             "original": "处理结果将在这里显示",
             "ruby_text": "<p>请刷新页面或重新提交</p>",
             "vocab": [],
             "translation": "处理结果将在这里显示",
-            "title": "处理结果"
-        }
+            "title": "处理结果",
+        },
     )
 
 
