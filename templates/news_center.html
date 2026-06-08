@@ -24,7 +24,6 @@
               <a href="/news_center?limit=10" class="btn-secondary news-limit-link {% if limit == 10 %}is-active{% endif %}">10 条</a>
               <a href="/news_center?limit=12" class="btn-secondary news-limit-link {% if limit == 12 %}is-active{% endif %}">12 条</a>
               <a href="/news_center?limit=20" class="btn-secondary news-limit-link {% if limit == 20 %}is-active{% endif %}">20 条</a>
-              <button type="button" id="refresh-news-btn" class="btn-secondary">刷新列表</button>
             </div>
           </div>
 
@@ -38,8 +37,6 @@
               <button type="button" id="custom-url-submit" class="btn-primary">抓取并生成</button>
             </div>
           </div>
-
-          <div id="news-center-status" class="news-center-status">请选择一条新闻开始生成文章，后台会自动完成简化、注音和生词提取。</div>
 
           {% if news_items and news_items|length > 0 %}
             <div class="news-grid">
