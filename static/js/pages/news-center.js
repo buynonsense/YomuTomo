@@ -2,28 +2,68 @@
   'use strict';
 
   document.addEventListener('DOMContentLoaded', function () {
-    const statusEl = document.getElementById('news-center-status');
-    const refreshBtn = document.getElementById('refresh-news-btn');
     const customUrlInput = document.getElementById('custom-url-input');
     const customUrlSubmit = document.getElementById('custom-url-submit');
     const cards = Array.from(document.querySelectorAll('[data-news-card]'));
     const crawlButtons = Array.from(document.querySelectorAll('.news-crawl-btn'));
 
-    if (!statusEl) {
-      return;
+    let pollTimer = null;
+    const ACTIVE_TASK_ID_KEY = 'newsCenterActiveTaskId';
+    const NOTIFIED_TASK_IDS_KEY = 'newsCenterNotifiedTaskIds';
+
+    function getActiveTaskId() {
+      try {
+        return sessionStorage.getItem(ACTIVE_TASK_ID_KEY) || '';
+      } catch (error) {
+        console.error('读取新闻任务 ID 失败', error);
+        return '';
+      }
     }
 
-    let pollTimer = null;
+    function setActiveTaskId(taskId) {
+      try {
+        if (taskId) {
+          sessionStorage.setItem(ACTIVE_TASK_ID_KEY, String(taskId));
+        }
+      } catch (error) {
+        console.error('保存新闻任务 ID 失败', error);
+      }
+    }
 
-    function setStatus(message, state) {
-      statusEl.textContent = message;
-      statusEl.classList.remove('is-processing', 'is-success', 'is-error');
-      if (state === 'processing') {
-        statusEl.classList.add('is-processing');
-      } else if (state === 'success') {
-        statusEl.classList.add('is-success');
-      } else if (state === 'error') {
-        statusEl.classList.add('is-error');
+    function getNotifiedTaskIds() {
+      try {
+        const raw = sessionStorage.getItem(NOTIFIED_TASK_IDS_KEY);
+        if (!raw) {
+          return [];
+        }
+
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map((value) => String(value)) : [];
+      } catch (error) {
+        console.error('读取已通知任务列表失败', error);
+        return [];
+      }
+    }
+
+    function hasNotifiedTask(taskId) {
+      if (!taskId) {
+        return false;
+      }
+
+      return getNotifiedTaskIds().includes(String(taskId));
+    }
+
+    function markTaskNotified(taskId) {
+      if (!taskId) {
+        return;
+      }
+
+      try {
+        const current = new Set(getNotifiedTaskIds());
+        current.add(String(taskId));
+        sessionStorage.setItem(NOTIFIED_TASK_IDS_KEY, JSON.stringify(Array.from(current)));
+      } catch (error) {
+        console.error('保存已通知任务列表失败', error);
       }
     }
 
@@ -31,9 +71,6 @@
       crawlButtons.forEach((button) => {
         button.disabled = disabled;
       });
-      if (refreshBtn) {
-        refreshBtn.disabled = disabled;
-      }
       if (customUrlSubmit) {
         customUrlSubmit.disabled = disabled;
       }
@@ -43,6 +80,32 @@
       cards.forEach((card) => {
         card.classList.toggle('is-busy', disabled);
       });
+    }
+
+    function handleCrawlStatus(data) {
+      const taskId = data && data.task_id ? String(data.task_id) : getActiveTaskId();
+
+      if (data.status === 'processing') {
+        setButtonsDisabled(true);
+        return;
+      }
+
+      stopPolling();
+      setButtonsDisabled(false);
+
+      if (data.status === 'completed') {
+        if (taskId && !hasNotifiedTask(taskId)) {
+          markTaskNotified(taskId);
+          notify('新闻生成完成，可以前往“我的文章”查看。', 'success');
+          window.setTimeout(() => window.location.reload(), 1500);
+        }
+        return;
+      }
+
+      if (data.status === 'failed') {
+        notify('新闻生成失败，请稍后重试。', 'error');
+        return;
+      }
     }
 
     function notify(message, type) {
@@ -71,23 +134,10 @@
         const response = await fetch('/crawl_status');
         const data = await response.json();
 
+        handleCrawlStatus(data);
+
         if (data.status === 'processing') {
-          const progress = data.total_articles > 0 ? ` (${data.processed_articles}/${data.total_articles})` : '';
-          setStatus(`后台处理中${progress}，完成后会自动更新。`, 'processing');
-          setButtonsDisabled(true);
           startPolling();
-          return;
-        }
-
-        stopPolling();
-        setButtonsDisabled(false);
-
-        if (data.status === 'completed') {
-          setStatus('请选择一条新闻开始生成文章。', 'idle');
-        } else if (data.status === 'failed') {
-          setStatus('最近一次新闻生成失败，请重新选择新闻重试。', 'error');
-        } else {
-          setStatus('请选择一条新闻开始生成文章。', 'idle');
         }
       } catch (error) {
         console.error('同步新闻任务状态失败', error);
@@ -104,25 +154,7 @@
           const response = await fetch('/crawl_status');
           const data = await response.json();
 
-          if (data.status === 'processing') {
-            const progress = data.total_articles > 0 ? ` (${data.processed_articles}/${data.total_articles})` : '';
-            setStatus(`后台处理中${progress}，完成后会自动更新。`, 'processing');
-            setButtonsDisabled(true);
-            return;
-          }
-
-          stopPolling();
-          setButtonsDisabled(false);
-
-          if (data.status === 'completed') {
-            setStatus('新闻生成完成，可以前往“我的文章”查看。', 'success');
-            notify('新闻生成完成，可以前往“我的文章”查看。', 'success');
-          } else if (data.status === 'failed') {
-            setStatus('新闻生成失败，请稍后重试。', 'error');
-            notify('新闻生成失败，请稍后重试。', 'error');
-          } else {
-            setStatus('请选择一条新闻开始生成文章。', 'idle');
-          }
+          handleCrawlStatus(data);
         } catch (error) {
           console.error('轮询新闻任务状态失败', error);
         }
@@ -140,8 +172,11 @@
       }
 
       setButtonsDisabled(true);
-      setStatus(`正在启动：${newsTitle}`, 'processing');
       button.disabled = true;
+      button.dataset.originalText = button.textContent;
+      button.textContent = '处理中…';
+      button.classList.add('is-loading');
+      card.classList.add('is-busy');
 
       try {
         const response = await fetch('/crawl_news', {
@@ -157,17 +192,22 @@
           throw new Error(data.message || data.error || '启动失败');
         }
 
+        setActiveTaskId(data.task_id);
         notify(`${newsTitle} 已开始生成文章`, 'success');
-        setStatus(`${newsTitle} 已提交后台生成`, 'processing');
         startPolling();
       } catch (error) {
         console.error('启动新闻爬取失败', error);
         notify(error.message || '启动失败', 'error');
-        setStatus(`启动失败：${newsTitle}`, 'error');
         setButtonsDisabled(false);
+        button.textContent = button.dataset.originalText || '生成文章';
+        button.classList.remove('is-loading');
+        card.classList.remove('is-busy');
       } finally {
         if (!pollTimer) {
           button.disabled = false;
+          button.textContent = button.dataset.originalText || '生成文章';
+          button.classList.remove('is-loading');
+          card.classList.remove('is-busy');
         }
       }
     }
@@ -180,7 +220,9 @@
       }
 
       setButtonsDisabled(true);
-      setStatus('正在启动自定义 URL 抓取…', 'processing');
+      customUrlSubmit.dataset.originalText = customUrlSubmit.textContent;
+      customUrlSubmit.textContent = '处理中…';
+      customUrlSubmit.classList.add('is-loading');
 
       try {
         const response = await fetch('/crawl_custom_url', {
@@ -196,14 +238,15 @@
           throw new Error(data.message || data.error || '启动失败');
         }
 
+        setActiveTaskId(data.task_id);
         notify('自定义 URL 已开始处理', 'success');
-        setStatus('自定义 URL 已提交后台生成', 'processing');
         startPolling();
       } catch (error) {
         console.error('启动自定义 URL 失败', error);
         notify(error.message || '启动失败', 'error');
-        setStatus('自定义 URL 启动失败', 'error');
         setButtonsDisabled(false);
+        customUrlSubmit.textContent = customUrlSubmit.dataset.originalText || '抓取并生成';
+        customUrlSubmit.classList.remove('is-loading');
       }
     }
 
@@ -212,12 +255,6 @@
         startCrawl(button);
       });
     });
-
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', function () {
-        window.location.reload();
-      });
-    }
 
     if (customUrlSubmit) {
       customUrlSubmit.addEventListener('click', function () {

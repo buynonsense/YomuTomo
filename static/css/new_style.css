@@ -1161,30 +1161,6 @@ rt {
   box-shadow: 0 6px 16px rgba(233, 30, 99, 0.18);
 }
 
-.news-center-status {
-  margin: 14px 0 18px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(252, 228, 236, 0.6);
-  border: 1px solid rgba(233, 30, 99, 0.18);
-  color: var(--text-primary);
-}
-
-.news-center-status.is-processing {
-  border-color: var(--primary-color);
-  background: linear-gradient(135deg, rgba(252, 228, 236, 0.85), rgba(248, 187, 217, 0.55));
-}
-
-.news-center-status.is-success {
-  border-color: var(--success-color);
-  background: linear-gradient(135deg, rgba(232, 245, 233, 0.95), rgba(200, 230, 201, 0.7));
-}
-
-.news-center-status.is-error {
-  border-color: var(--danger-color);
-  background: linear-gradient(135deg, rgba(255, 235, 238, 0.95), rgba(255, 205, 210, 0.7));
-}
-
 .news-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1276,6 +1252,35 @@ rt {
 .news-card.is-busy {
   opacity: 0.7;
   pointer-events: none;
+}
+
+.news-crawl-btn,
+#custom-url-submit {
+  position: relative;
+  overflow: hidden;
+}
+
+.news-crawl-btn.is-loading,
+#custom-url-submit.is-loading {
+  color: #1b5e20;
+}
+
+.news-crawl-btn.is-loading::after,
+#custom-url-submit.is-loading::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid rgba(76, 175, 80, 0.35);
+  border-top-color: rgba(76, 175, 80, 1);
+  animation: spinGlow 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes spinGlow {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 540px) {
