@@ -82,6 +82,12 @@
   transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.global-nav__link--button {
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .global-nav__link:hover,
 .global-nav__action:hover,
 .global-nav__brand:hover {
@@ -109,6 +115,18 @@
   font-weight: 600;
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+.global-nav__user--button {
+  border: 1px solid rgba(122, 74, 33, 0.16);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.global-nav__user--button:hover {
+  background: rgba(255, 247, 239, 0.56);
+  border-color: rgba(122, 74, 33, 0.24);
 }
 
 .global-nav__form {
@@ -147,6 +165,87 @@
 
 .global-nav__action[type="submit"] {
   appearance: none;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 0 30px 16px;
+}
+
+.settings-tab {
+  border: 1px solid rgba(122, 74, 33, 0.16);
+  background: rgba(255, 245, 235, 0.38);
+  color: #7a4a21;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.settings-tab.is-active {
+  background: #f1dcc8;
+  font-weight: 700;
+}
+
+.settings-modal-body {
+  padding-top: 0;
+}
+
+.settings-panel {
+  display: none;
+}
+
+.settings-panel.is-active {
+  display: block;
+}
+
+.settings-form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.settings-modal-content {
+  max-width: 640px;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-section-header__text h4 {
+  margin: 0;
+}
+
+.settings-section-header__text p {
+  margin: 4px 0 0;
+}
+
+.config-status--inline {
+  flex: 0 0 auto;
+  margin: 0;
+  min-width: 92px;
+  padding: 8px 12px;
+  justify-content: center;
+}
+
+.config-status--inline #status-text {
+  white-space: nowrap;
+}
+
+.settings-modal-footer {
+  display: none;
 }
 
 .global-nav__brand:focus-visible,

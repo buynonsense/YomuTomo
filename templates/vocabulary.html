@@ -11,11 +11,7 @@
   <body>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="page-header">
-        <h1>📒 我的生词本</h1>
-        <p>来自文章的词条会自动入库，后续可继续扩展复习和掌握训练。</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
         <section class="card">
@@ -98,6 +94,8 @@
     <script id="vocab-rows-data" type="application/json">{{ vocab_rows | tojson }}</script>
 
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/vocabulary.js"></script>
   </body>
 </html>

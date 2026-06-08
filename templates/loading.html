@@ -11,11 +11,7 @@
   <body>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="page-header">
-        <h1>🤖 AI处理中...</h1>
-        <p>正在并发生成注音、词汇、翻译等内容，请稍候</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
         <section class="card loading-card">
@@ -68,6 +64,10 @@
         </section>
       </main>
     </div>
+
+    <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
 
     <script>
       // 模拟进度条动画

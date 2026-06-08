@@ -11,11 +11,7 @@
   <body>
     <div class="container">
       {% include "partials/global_nav.html" %}
-
-      <header class="page-header">
-        <h1>📰 NHK 新闻中心</h1>
-        <p>浏览最近 {{ news_count }} 条新闻，选择你想开始阅读的那一篇。</p>
-      </header>
+      {% include "partials/global_settings_modal.html" %}
 
       <main class="main-content">
         <section class="card news-center-shell">
@@ -75,6 +71,8 @@
     </div>
 
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/ai-config.js"></script>
+    <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/news-center.js"></script>
   </body>
 </html>

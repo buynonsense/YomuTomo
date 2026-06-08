@@ -88,20 +88,11 @@ class AIConfigManager {
     const statusText = document.getElementById('status-text');
 
     if (statusDiv && statusIcon && statusText) {
-      if (this.config.apiKey) {
-        if (tested === true) {
-          statusDiv.classList.add('configured');
-          statusIcon.textContent = '✅';
-          statusText.textContent = `已配置 - API Key: ${this.config.apiKey.substring(0, 8)}..., Base URL: ${this.config.baseUrl || '默认'} (${modelOrError})`;
-        } else if (tested === false) {
-          statusDiv.classList.add('error');
-          statusIcon.textContent = '❓';
-          statusText.textContent = `配置有问题: ${modelOrError}`;
-        } else {
-          statusDiv.classList.add('configured');
-          statusIcon.textContent = '❓';
-          statusText.textContent = `已保存 - API Key: ${this.config.apiKey.substring(0, 8)}..., Base URL: ${this.config.baseUrl || '默认'} (${this.config.model}) - 未测试`;
-        }
+      if (this.config.apiKey && tested !== false) {
+        statusDiv.classList.add('configured');
+        statusDiv.classList.remove('error');
+        statusIcon.textContent = '✅';
+        statusText.textContent = '已配置';
       } else {
         statusDiv.classList.remove('configured', 'error');
         statusIcon.textContent = '❌';
