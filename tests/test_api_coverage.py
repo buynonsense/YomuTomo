@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.model.models import Article, CrawlTask, User, VocabularyEntry
+from app.model.models import Article, CrawlTask, Notification, User, VocabularyEntry
 from app.routers import articles as articles_router
 from app.services.services import hash_password as real_hash_password
 from app.services.services import is_legacy_bcrypt_hash as real_is_legacy_bcrypt_hash
@@ -567,6 +567,28 @@ def test_save_ai_config_updates_user(app_client: TestClient, user_factory, db_se
     assert refreshed.openai_model == "gpt-test"
 
 
+def test_save_ai_config_creates_notification_with_internal_source_url(app_client: TestClient, user_factory, db_session):
+    user = user_factory()
+    _login(app_client, user.email)
+
+    response = app_client.post(
+        "/save_ai_config",
+        data={
+            "openai_api_key": "sk-test",
+            "openai_base_url": "https://example.com/v1",
+            "openai_model": "gpt-test",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    notifications = db_session.query(Notification).filter(Notification.user_id == user.id).all()
+    assert len(notifications) == 1
+    assert notifications[0].type == "settings_saved"
+    assert notifications[0].source_url.startswith("/")
+    assert "open_settings=ai" in notifications[0].source_url
+
+
 def test_get_user_level_requires_login(app_client: TestClient):
     response = app_client.get("/get_user_level")
     assert response.status_code == 200
@@ -595,6 +617,197 @@ def test_crawl_status_and_crawl_news_flow(app_client: TestClient, user_factory, 
     response = app_client.post("/crawl_news")
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+def test_notification_model_persists_and_marks_read(db_session, user_factory):
+    user = user_factory()
+    notification = Notification(
+        user_id=user.id,
+        type="news_failed",
+        title="新闻生成失败",
+        message="正文抓取失败：未能提取到新闻正文，请稍后重试。",
+        source_task_id=12,
+        source_url="/news_center",
+        is_read=False,
+    )
+
+    db_session.add(notification)
+    db_session.commit()
+    db_session.refresh(notification)
+
+    assert notification.id is not None
+    assert notification.is_read is False
+    assert notification.read_at is None
+
+
+def test_notifications_api_lists_unread_and_marks_all_read(app_client: TestClient, user_factory, db_session):
+    user = user_factory()
+    user_id = user.id
+    _login(app_client, user.email)
+
+    db_session.add(
+        Notification(
+            user_id=user_id,
+            type="news_success",
+            title="新闻生成完成",
+            message="新闻生成完成，可以前往“我的文章”查看。",
+            source_task_id=22,
+            source_url="/dashboard",
+            is_read=False,
+        )
+    )
+    db_session.commit()
+
+    list_response = app_client.get("/notifications")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["unread_count"] == 1
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["title"] == "新闻生成完成"
+
+    unread_response = app_client.get("/notifications/unread-count")
+    assert unread_response.status_code == 200
+    assert unread_response.json()["unread_count"] == 1
+
+    mark_response = app_client.post("/notifications/mark-read", json={"all": True})
+    assert mark_response.status_code == 200
+    assert mark_response.json()["success"] is True
+    assert mark_response.json()["affected"] == 1
+
+    refreshed = app_client.get("/notifications/unread-count")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["unread_count"] == 0
+
+
+def test_notifications_api_lists_without_login(app_client: TestClient):
+    response = app_client.get("/notifications")
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert response.json()["message"] == "未登录"
+
+
+def test_notifications_api_marks_single_notification_read(app_client: TestClient, user_factory, db_session):
+    user = user_factory()
+    user_id = user.id
+    _login(app_client, user.email)
+
+    notification = Notification(
+        user_id=user_id,
+        type="system_error",
+        title="系统报错",
+        message="系统报错：数据库连接失败。",
+        source_task_id=None,
+        source_url="/",
+        is_read=False,
+    )
+    db_session.add(notification)
+    db_session.commit()
+    db_session.refresh(notification)
+
+    mark_response = app_client.post("/notifications/mark-read", json={"notification_id": notification.id})
+    assert mark_response.status_code == 200
+    assert mark_response.json()["success"] is True
+    assert mark_response.json()["affected"] == 1
+
+    refreshed = db_session.get(Notification, notification.id)
+    assert refreshed is not None
+    assert refreshed.is_read is True
+    assert refreshed.read_at is not None
+
+
+def test_article_view_exposes_highlight_context(app_client: TestClient, user_factory, db_session):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    article = _create_article(db_session, user.id)
+    _login(app_client, user.email)
+
+    response = app_client.get(f"/articles/{article.id}?highlight_notification=123&highlight_article={article.id}")
+
+    assert response.status_code == 200
+    assert str(article.id) in response.text
+
+
+def test_crawl_and_save_articles_writes_failure_notification_and_is_idempotent(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: [
+            {
+                "title": "新闻",
+                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+            }
+        ],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+    repeat_result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+
+    notifications = db_session.query(Notification).filter(Notification.user_id == user_id).all()
+
+    assert result["success"] is False
+    assert result["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
+    assert repeat_result["success"] is False
+    assert len(notifications) == 1
+    assert notifications[0].type == "news_failed"
+    assert notifications[0].source_task_id == task.id
+
+
+def test_crawl_and_save_articles_writes_success_notification(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: [
+            {
+                "title": "新闻",
+                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+            }
+        ],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: "这是正文内容，可以继续处理")
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+    repeat_result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+
+    notifications = db_session.query(Notification).filter(Notification.user_id == user_id).all()
+
+    assert result["success"] is True
+    assert result["message"] == "新闻生成完成，可以前往“我的文章”查看。"
+    assert repeat_result["success"] is True
+    assert len(notifications) == 1
+    assert notifications[0].type == "news_success"
+    assert notifications[0].source_task_id == task.id
 
 
 def test_news_center_renders_multiple_items(app_client: TestClient, user_factory):
@@ -631,6 +844,124 @@ def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_facto
     assert response.json()["success"] is True
     assert captured["user_id"] == user.id
     assert captured["selected_urls"] == [NEWS_FIXTURE_ITEMS[1]["source_url"]]
+
+
+def test_crawl_and_save_articles_marks_failed_when_no_article_created(db_session, user_factory, monkeypatch: pytest.MonkeyPatch):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    user_email = user.email
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    task_id = task.id
+    task_id = task.id
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: [{"title": "新闻", "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html", "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html"}],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    spider_module.crawl_and_save_articles_background(user.id, task.id, None)
+
+    refreshed_task = db_session.get(CrawlTask, task_id)
+    assert refreshed_task.status == "failed"
+    assert refreshed_task.processed_articles == 0
+    assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
+
+
+def test_crawl_and_save_articles_background_returns_clear_failure_message_when_body_fetch_fails(
+    app_client: TestClient,
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+): 
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    user_email = user.email
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    task_id = task.id
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: [
+            {
+                "title": "新闻",
+                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+            }
+        ],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user.id, task_id, None)
+
+    _login(app_client, user_email)
+    status_response = app_client.get("/crawl_status")
+
+    refreshed_task = db_session.get(CrawlTask, task_id)
+    assert result["success"] is False
+    assert result["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
+    assert status_response.status_code == 200
+    assert status_response.json()["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
+    assert refreshed_task.status == "failed"
+    assert refreshed_task.processed_articles == 0
+    assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
+
+
+def test_crawl_and_save_articles_background_returns_generic_failure_message_when_no_article_is_generated(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    task_id = task.id
+
+    from spider import nhk_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_nhk_easy_news",
+        lambda limit=12: [
+            {
+                "title": "新闻",
+                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+            }
+        ],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: "这是正文内容，可以继续处理")
+    monkeypatch.setattr(spider_module, "generate_all_content", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("生成失败")))
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user.id, task_id, None)
+
+    refreshed_task = db_session.get(CrawlTask, task_id)
+    assert result["success"] is False
+    assert result["message"] == "新闻生成失败：没有成功生成任何文章，请重试。"
+    assert refreshed_task.status == "failed"
+    assert refreshed_task.processed_articles == 0
+    assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
 
 
 def test_crawl_custom_url_starts_background_task(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):

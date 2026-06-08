@@ -6,6 +6,7 @@ from app.db import get_db
 from app.model.models import Article, User, CrawlTask
 from app.services.ai_client_async import AIClientError
 from app.services.services import generate_all_content, get_openai_client, log_with_time
+from app.services.notifications import create_notification
 from app.core.config import settings
 import os
 import threading
@@ -14,6 +15,7 @@ from app.utils.time import utc_now
 
 NHK_EASY_NEWS_URL = "https://www3.nhk.or.jp/news/easy/top-list.json"
 NHK_EASY_BASE_URL = "https://www3.nhk.or.jp/news/easy"
+TASK_FAILURE_MESSAGES: dict[int, str] = {}
 
 
 def _fallback_nhk_news() -> list[dict]:
@@ -335,32 +337,47 @@ def generate_simplified_article(original_text, user_level, model, client):
         log_with_time(f"[AI] generate_simplified_article failed, fallback to original: {e}")
         return original_text
 
+
+def _build_crawl_result(success: bool, message: str, task_id: int, processed_articles: int) -> dict[str, object]:
+    TASK_FAILURE_MESSAGES[task_id] = message
+    return {
+        "success": success,
+        "message": message,
+        "task_id": task_id,
+        "processed_articles": processed_articles,
+    }
+
 def crawl_and_save_articles_background(user_id, task_id, selected_urls: Iterable[str] | None = None):
     """后台处理爬虫任务"""
     db = next(get_db())
     selected_url_list = _normalize_selected_urls(selected_urls)
+    task = None
     
     try:
         # 更新任务状态为处理中
         task = db.query(CrawlTask).filter(CrawlTask.id == task_id).first()
         if not task:
-            return
+            return _build_crawl_result(False, "新闻生成失败：任务不存在。", task_id, 0)
         
         task.status = "processing"
         task.updated_at = utc_now()
         db.commit()
+
+        body_fetch_failed = False
         
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             task.status = "failed"
+            task.updated_at = utc_now()
             db.commit()
-            return
+            return _build_crawl_result(False, "新闻生成失败：未找到用户。", task_id, 0)
         
         # 检查用户是否配置了AI设置
         if not user.openai_api_key:
             task.status = "failed"
+            task.updated_at = utc_now()
             db.commit()
-            return
+            return _build_crawl_result(False, "新闻生成失败：请先在设置中配置AI参数（API Key等）。", task_id, 0)
         
         user_level = user.level
         client = get_openai_client(user.openai_api_key, user.openai_base_url)
@@ -407,6 +424,7 @@ def crawl_and_save_articles_background(user_id, task_id, selected_urls: Iterable
                     log_with_time(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {news['title']}")
                 else:
                     log_with_time(f"⚠️ 抓取正文失败，跳过该条: {news['title']}")
+                    body_fetch_failed = True
                     continue
                     
             except AIClientError as e:
@@ -418,12 +436,55 @@ def crawl_and_save_articles_background(user_id, task_id, selected_urls: Iterable
                 traceback.print_exc()
                 continue
         
-        # 更新任务状态为完成
-        task.status = "completed"
+        # 只有真正生成出文章才算完成，否则直接标记失败，避免前端误报成功
+        task.status = "completed" if processed_count > 0 else "failed"
         task.updated_at = utc_now()
         db.commit()
-        log_with_time(f"🎉 爬虫任务完成！共处理 {processed_count} 篇文章")
-        
+        if processed_count > 0:
+            log_with_time(f"🎉 爬虫任务完成！共处理 {processed_count} 篇文章")
+            try:
+                create_notification(
+                    db,
+                    user_id=user_id,
+                    type="news_success",
+                    title="新闻生成完成",
+                    message="新闻生成完成，可以前往“我的文章”查看。",
+                    source_task_id=task.id,
+                    source_url="/dashboard",
+                )
+            except Exception as e:
+                log_with_time(f"❌ 写入新闻成功通知失败 task_id={task.id}: {e}", level="ERROR")
+            return _build_crawl_result(True, "新闻生成完成，可以前往“我的文章”查看。", task.id, processed_count)
+        else:
+            log_with_time("⚠️ 爬虫任务未生成任何文章，已标记为失败")
+            if body_fetch_failed:
+                try:
+                    create_notification(
+                        db,
+                        user_id=user_id,
+                        type="news_failed",
+                        title="新闻生成失败",
+                        message="正文抓取失败：未能提取到新闻正文，请稍后重试。",
+                        source_task_id=task.id,
+                        source_url="/news_center",
+                    )
+                except Exception as e:
+                    log_with_time(f"❌ 写入新闻失败通知失败 task_id={task.id}: {e}", level="ERROR")
+                return _build_crawl_result(False, "正文抓取失败：未能提取到新闻正文，请稍后重试。", task.id, processed_count)
+            try:
+                create_notification(
+                    db,
+                    user_id=user_id,
+                    type="news_failed",
+                    title="新闻生成失败",
+                    message="新闻生成失败：没有成功生成任何文章，请重试。",
+                    source_task_id=task.id,
+                    source_url="/news_center",
+                )
+            except Exception as e:
+                log_with_time(f"❌ 写入新闻失败通知失败 task_id={task.id}: {e}", level="ERROR")
+            return _build_crawl_result(False, "新闻生成失败：没有成功生成任何文章，请重试。", task.id, processed_count)
+    
     except Exception as e:
         log_with_time(f"❌ 后台处理失败: {e}")
         import traceback
@@ -432,6 +493,33 @@ def crawl_and_save_articles_background(user_id, task_id, selected_urls: Iterable
             task.status = "failed"
             task.updated_at = utc_now()
             db.commit()
+        if task:
+            try:
+                create_notification(
+                    db,
+                    user_id=user_id,
+                    type="news_failed",
+                    title="新闻生成失败",
+                    message=f"新闻生成失败：{str(e)}",
+                    source_task_id=task.id,
+                    source_url="/news_center",
+                )
+            except Exception as notify_error:
+                log_with_time(f"❌ 写入异常失败通知失败 task_id={task.id}: {notify_error}", level="ERROR")
+            return _build_crawl_result(False, f"新闻生成失败：{str(e)}", task.id, task.processed_articles)
+        try:
+            create_notification(
+                db,
+                user_id=user_id,
+                type="news_failed",
+                title="新闻生成失败",
+                message=f"新闻生成失败：{str(e)}",
+                source_task_id=task_id,
+                source_url="/news_center",
+            )
+        except Exception as notify_error:
+            log_with_time(f"❌ 写入异常失败通知失败 task_id={task_id}: {notify_error}", level="ERROR")
+        return _build_crawl_result(False, f"新闻生成失败：{str(e)}", task_id, 0)
     finally:
         db.close()
 
