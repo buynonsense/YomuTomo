@@ -845,6 +845,36 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const controller = new ReadingPageController();
     controller.init();
+
+    const highlightDataEl = document.getElementById('notification-highlight-data');
+    const highlightNotificationId = highlightDataEl?.dataset.highlightNotification || new URLSearchParams(window.location.search).get('highlight_notification') || '';
+    const highlightArticleId = highlightDataEl?.dataset.highlightArticle || new URLSearchParams(window.location.search).get('highlight_article') || '';
+
+    if (highlightNotificationId) {
+      const highlightTarget = document.getElementById('highlight-text');
+      if (highlightTarget) {
+        highlightTarget.classList.add('notification-highlight-pulse');
+        window.setTimeout(() => {
+          highlightTarget.classList.remove('notification-highlight-pulse');
+        }, 2200);
+        window.setTimeout(() => {
+          highlightTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 120);
+      }
+    }
+
+    if (highlightArticleId) {
+      const articleEl = document.getElementById(`article-${highlightArticleId}`);
+      if (articleEl) {
+        articleEl.classList.add('notification-highlight-pulse');
+        window.setTimeout(() => {
+          articleEl.classList.remove('notification-highlight-pulse');
+        }, 2200);
+        window.setTimeout(() => {
+          articleEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 120);
+      }
+    }
   } catch (error) {
     console.error('阅读页初始化失败', error);
   }

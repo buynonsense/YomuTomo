@@ -22,6 +22,9 @@
     <div class="container">
       {% include "partials/global_nav.html" %}
       {% include "partials/global_settings_modal.html" %}
+      {% if highlight_notification or highlight_article %}
+      <div id="notification-highlight-data" data-highlight-notification="{{ highlight_notification or '' }}" data-highlight-article="{{ highlight_article or '' }}" hidden></div>
+      {% endif %}
 
       <main class="main-content">
         <section class="card text-card">
@@ -150,6 +153,7 @@
     <script src="/static/js/modules/furigana-filter.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/task-state.js"></script>
     <script src="/static/js/modules/ai-config.js"></script>
     <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/reading.js"></script>

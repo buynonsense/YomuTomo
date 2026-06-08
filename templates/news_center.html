@@ -29,7 +29,14 @@
             </div>
             <div class="custom-url-panel__form">
               <input id="custom-url-input" type="url" placeholder="https://example.com/jp-article" autocomplete="off" />
-              <button type="button" id="custom-url-submit" class="btn-primary">抓取并生成</button>
+              <div class="btn-loading-shell">
+                <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+                  <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
+                </svg>
+                <button type="button" id="custom-url-submit" class="btn-primary btn-with-loading-ring">
+                  <span class="btn-label">抓取并生成</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -49,7 +56,14 @@
                     <p class="news-card__outline">{{ item.outline }}</p>
                   {% endif %}
                   <div class="news-card__actions">
-                    <button type="button" class="btn-primary news-crawl-btn">生成文章</button>
+                    <div class="btn-loading-shell">
+                      <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+                        <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
+                      </svg>
+                      <button type="button" class="btn-primary news-crawl-btn btn-with-loading-ring">
+                        <span class="btn-label">生成文章</span>
+                      </button>
+                    </div>
                   </div>
                 </article>
               {% endfor %}
@@ -62,6 +76,7 @@
     </div>
 
     <script src="/static/js/common.js"></script>
+    <script src="/static/js/modules/task-state.js"></script>
     <script src="/static/js/modules/ai-config.js"></script>
     <script src="/static/js/modules/settings-modal.js"></script>
     <script src="/static/js/pages/news-center.js"></script>
