@@ -715,6 +715,49 @@ def test_notifications_api_marks_single_notification_read(app_client: TestClient
     assert refreshed.read_at is not None
 
 
+def test_notifications_api_deletes_single_and_all_notifications(app_client: TestClient, user_factory, db_session):
+    user = user_factory()
+    _login(app_client, user.email)
+
+    first = Notification(
+        user_id=user.id,
+        type="system_error",
+        title="系统报错",
+        message="系统报错：数据库连接失败。",
+        source_task_id=None,
+        source_url="/",
+        is_read=False,
+    )
+    second = Notification(
+        user_id=user.id,
+        type="news_success",
+        title="新闻生成完成",
+        message="新闻生成完成，可以前往“我的文章”查看。",
+        source_task_id=99,
+        source_url="/dashboard",
+        is_read=False,
+    )
+    db_session.add_all([first, second])
+    db_session.commit()
+    db_session.refresh(first)
+    db_session.refresh(second)
+    first_id = first.id
+    second_id = second.id
+
+    delete_one_response = app_client.post("/notifications/delete", json={"notification_id": first_id})
+    assert delete_one_response.status_code == 200
+    assert delete_one_response.json()["success"] is True
+    assert delete_one_response.json()["affected"] == 1
+    assert db_session.get(Notification, first_id) is None
+    assert db_session.get(Notification, second_id) is not None
+
+    delete_all_response = app_client.post("/notifications/delete", json={"all": True})
+    assert delete_all_response.status_code == 200
+    assert delete_all_response.json()["success"] is True
+    assert delete_all_response.json()["affected"] == 1
+    assert db_session.get(Notification, second_id) is None
+
+
 def test_article_view_exposes_highlight_context(app_client: TestClient, user_factory, db_session):
     user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
     article = _create_article(db_session, user.id)

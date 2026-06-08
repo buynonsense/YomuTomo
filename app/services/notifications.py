@@ -101,3 +101,14 @@ def mark_notifications_read(db: Session, user_id: int, notification_id: int | No
     if affected > 0:
         db.commit()
     return affected
+
+
+def delete_notifications(db: Session, user_id: int, notification_id: int | None = None) -> int:
+    query = db.query(Notification).filter(Notification.user_id == user_id)
+    if notification_id is not None:
+        query = query.filter(Notification.id == notification_id)
+
+    affected = query.delete(synchronize_session=False)
+    if affected > 0:
+        db.commit()
+    return affected
