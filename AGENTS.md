@@ -15,12 +15,13 @@
 | `app.py` | 兼容入口, 仅转发到 `app.main` |
 | `app/core/config.py` | `Settings` 类, 从环境变量读取 |
 | `app/db.py` | Engine / SessionLocal / Base |
-| `app/model/models.py` | User / Article / CrawlTask |
+| `app/model/models.py` | User / Article / CrawlTask / Notification |
 | `app/services/services.py` | 注音/翻译/生词/标题/评分 + 密码哈希 |
+| `app/services/notifications.py` | 统一通知中心: 创建/查询/已读/未读统计 |
 | `app/services/ai_client_async.py` | AIClient 工厂 (OpenAI 兼容 / Gemini) |
-| `app/routers/` | 路由: pages, auth, articles, evaluation |
-| `templates/` | Jinja2 模板 (6 个 html) |
-| `static/js/modules/` | 前端 JS 模块 (speech-recognition, pdf-export, text-highlight, ai-config) |
+| `app/routers/` | 路由: pages, auth, articles, evaluation, notifications |
+| `templates/` | Jinja2 模板 (8 个主要 html + partials) |
+| `static/js/modules/` | 前端 JS 模块 (speech-recognition, pdf-export, text-highlight, ai-config, notifications) |
 | `static/css/components/` | CSS 组件 (buttons, forms, layout, modal-animations, common) |
 | `spider/nhk_spider.py` | NHK Easy 新闻爬虫 (后台线程) |
 
@@ -37,6 +38,8 @@ make deploy        # docker-compose -f docker-compose.prod.yml up -d (生产)
 
 alembic upgrade head                    # 应用迁移
 alembic revision --autogenerate -m "msg"  # 生成迁移
+alembic upgrade heads                   # 当存在多个 migration head 时应用全部分支头
+alembic stamp heads                     # 旧数据库已具备表结构但缺少 alembic_version 时，用于标记当前版本
 ```
 
 ## 启动方式
@@ -73,6 +76,20 @@ make deploy  # 或 docker-compose -f docker-compose.prod.yml up -d
 - 用户 AI 配置存于 `users` 表的 `openai_api_key` / `openai_base_url` / `openai_model` 字段
 - 保存配置会自动调用 `AIClient.chat()` 验证有效性
 
+## 通知中心
+
+- 通知中心是全站统一能力，按用户落库并支持跨设备同步
+- 导航栏右侧的铃铛按钮是通知入口，未读数由数据库统计
+- 通知面板打开后会自动把当前用户未读通知标记为已读
+- 统一通知服务在 `app/services/notifications.py`
+- 通知路由在 `app/routers/notifications.py`
+- 常见通知来源：
+  - 新闻生成成功 / 失败
+  - 首页文章生成成功 / 失败
+  - AI 配置保存成功 / 验证失败
+  - 全局系统报错
+- 通知点击后优先跳转到对应页面；文章类通知会附带页面高亮/定位参数
+
 ## 注音模式
 
 - **kakasi**: 仅 pykakasi, 最快但可能不准
@@ -84,6 +101,7 @@ make deploy  # 或 docker-compose -f docker-compose.prod.yml up -d
 - 启动时 `app/main.py:on_startup()` 会自动 `Base.metadata.create_all(bind=engine)` (兼容旧行为)
 - **正式迁移必须走 Alembic**: `alembic revision --autogenerate -m "msg"` + `alembic upgrade head`
 - 已有迁移文件在 `alembic/versions/`
+- 当前仓库存在多条 migration 分支头时，优先用 `alembic heads` 检查，再用 `alembic upgrade heads`；旧库如果已经有表结构但没有 `alembic_version`，先确认现状再考虑 `alembic stamp heads`
 
 ## 容器端口
 
@@ -103,6 +121,7 @@ make format && make lint
 
 - 修改完成后，如果项目支持 Docker，必须在 Docker 中启动并验证可访问性
 - 用户明确表示要看效果时，不能只给出代码改动，必须把服务跑起来并确认页面可打开
+- 验证建议至少覆盖首页、新闻中心、我的文章页和关键 API 返回 200
 
 ## 已知问题 / 约束
 
@@ -112,4 +131,6 @@ make format && make lint
 - `app/main.py` 会在启动时重试数据库连接 (最多 10 次, 间隔 3 秒)
 - 用户等级 `level` 字段 (1-5) 影响新闻简化难度
 - NHK 爬虫只抓取最新 1 条新闻, 在后台线程中执行 (`crawl_and_save_articles_background`)
+- 新闻任务和首页文章生成成功/失败都要写入通知中心，失败信息要可读，不能只靠瞬时 toast
+- 通知卡片的“查看”入口优先跳转到对应页面，并通过 query 参数触发高亮/定位
 - 朗读评测使用 `difflib.SequenceMatcher` 的字符串相似度, 非 AI
