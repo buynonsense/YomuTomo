@@ -83,7 +83,7 @@
         setButtonsDisabled(false);
 
         if (data.status === 'completed') {
-          setStatus('最近一次新闻生成已完成，可以继续选择下一条。', 'success');
+          setStatus('请选择一条新闻开始生成文章。', 'idle');
         } else if (data.status === 'failed') {
           setStatus('最近一次新闻生成失败，请重新选择新闻重试。', 'error');
         } else {
