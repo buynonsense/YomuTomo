@@ -133,15 +133,15 @@
 }
 
 .global-nav__action--logout {
-  background: rgba(122, 74, 33, 0.86);
+  background: #f44336;
   color: #fff;
-  border-color: rgba(122, 74, 33, 0.35);
+  border-color: #f44336;
 }
 
 .global-nav__action--login:hover,
 .global-nav__action--register:hover,
 .global-nav__action--logout:hover {
-  background: rgba(141, 87, 44, 0.94);
+  background: #da190b;
   color: #fff;
 }
 
