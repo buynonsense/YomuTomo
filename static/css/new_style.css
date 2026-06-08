@@ -1125,6 +1125,29 @@ rt {
   align-items: center;
 }
 
+.news-center-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.news-center-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.news-center-intro h2 {
+  margin-bottom: 8px;
+}
+
+.news-center-intro p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 .custom-url-panel {
   margin-top: 18px;
   padding: 16px 18px;
@@ -1204,7 +1227,7 @@ rt {
 
 .news-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
 }
 
