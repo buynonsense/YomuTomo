@@ -65,3 +65,76 @@ def test_news_center_checks_status_response_ok():
 
     news_center_js = Path("static/js/pages/news-center.js").read_text(encoding="utf-8")
     assert news_center_js.count("response.ok") >= 3
+    assert "window.Utils.formatDateTime" in news_center_js
+    assert "data-news-published-at" in news_center_js
+
+
+def test_dashboard_template_uses_timestamp_data_attribute():
+    from pathlib import Path
+
+    dashboard_html = Path("templates/dashboard.html").read_text(encoding="utf-8")
+    assert "data-article-updated-at" in dashboard_html
+    assert "updated_at_beijing" not in dashboard_html
+    assert "updated_at_iso" in dashboard_html
+
+
+def test_dashboard_script_formats_article_timestamps_locally():
+    from pathlib import Path
+
+    dashboard_js = Path("static/js/pages/dashboard.js").read_text(encoding="utf-8")
+    assert "data-article-updated-at" in dashboard_js
+    assert "window.Utils.formatDateTime" in dashboard_js
+    assert "toLocaleString" not in dashboard_js
+
+
+def test_notifications_script_formats_times_through_shared_helper():
+    from pathlib import Path
+
+    notifications_js = Path("static/js/modules/notifications.js").read_text(encoding="utf-8")
+    assert "window.Utils.formatDateTime" in notifications_js
+    assert "toLocaleString" not in notifications_js
+
+
+def test_vocabulary_script_formats_times_through_shared_helper():
+    from pathlib import Path
+
+    vocabulary_js = Path("static/js/pages/vocabulary.js").read_text(encoding="utf-8")
+    assert "window.Utils.formatDateTime" in vocabulary_js
+    assert "toLocaleString" not in vocabulary_js
+
+
+def test_pdf_export_uses_shared_datetime_formatter():
+    from pathlib import Path
+
+    pdf_export_js = Path("static/js/modules/pdf-export.js").read_text(encoding="utf-8")
+    assert "window.Utils.formatDateTime" in pdf_export_js
+    assert "formatFilenameDate" in pdf_export_js
+    assert "toLocaleString" not in pdf_export_js
+
+
+def test_vocabulary_page_marks_timestamps_for_client_side_formatting():
+    from pathlib import Path
+
+    vocabulary_html = Path("templates/vocabulary.html").read_text(encoding="utf-8")
+    assert "data-vocab-updated-at" in vocabulary_html
+    assert "data-vocab-mastered-at" in vocabulary_html
+    assert "更新：</div>" in vocabulary_html
+    assert "掌握时间：</div>" in vocabulary_html
+
+
+def test_news_center_template_marks_published_at_for_client_side_formatting():
+    from pathlib import Path
+
+    news_center_html = Path("templates/news_center.html").read_text(encoding="utf-8")
+    assert "data-news-published-at" in news_center_html
+    assert "data-news-published-at-display" in news_center_html
+
+
+def test_safe_href_filter_is_available_for_template_links():
+    from app.utils.templates import create_templates
+
+    templates = create_templates()
+    assert "safe_href" in templates.env.filters
+    assert templates.env.filters["safe_href"]("/dashboard?foo=1") == "/dashboard?foo=1"
+    assert templates.env.filters["safe_href"]("javascript:alert(1)") == "#"
+    assert templates.env.filters["safe_href"]("https://example.com/path") == "https://example.com/path"

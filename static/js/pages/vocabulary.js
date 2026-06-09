@@ -34,6 +34,14 @@
     return firstMeaning.textContent.replace(/^释义：/, '').trim();
   }
 
+  function formatTime(value) {
+    if (!window.Utils || typeof window.Utils.formatDateTime !== 'function') {
+      return '';
+    }
+
+    return window.Utils.formatDateTime(value);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     const reviewEntryBtn = document.getElementById('vocab-review-entry');
     const reviewPanel = document.getElementById('vocab-review-panel');
@@ -69,6 +77,21 @@
       .filter(function (row) {
         return row.word.trim().length > 0;
       });
+
+    document.querySelectorAll('[data-vocab-updated-at], [data-vocab-mastered-at]').forEach(function (element) {
+      const updatedAt = element.getAttribute('data-vocab-updated-at');
+      const masteredAt = element.getAttribute('data-vocab-mastered-at');
+      const updatedText = formatTime(updatedAt);
+      const masteredText = formatTime(masteredAt);
+
+      if (updatedText && element.hasAttribute('data-vocab-updated-at')) {
+        element.textContent = '更新：' + updatedText;
+      }
+
+      if (masteredText && element.hasAttribute('data-vocab-mastered-at')) {
+        element.textContent = '掌握时间：' + masteredText;
+      }
+    });
 
     const state = {
       active: false,

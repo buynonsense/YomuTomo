@@ -27,15 +27,12 @@
     }
 
     function formatTime(value) {
-      if (!value) {
+      if (!window.Utils || typeof window.Utils.formatDateTime !== 'function') {
         return '';
       }
+
       try {
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) {
-          return '';
-        }
-        return date.toLocaleString('zh-CN', { hour12: false });
+        return window.Utils.formatDateTime(value);
       } catch (error) {
         console.error('格式化通知时间失败', error);
         return '';

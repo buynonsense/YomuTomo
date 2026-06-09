@@ -8,6 +8,40 @@ class PDFExporter {
     this.isExporting = false;
   }
 
+  formatDateTime(value) {
+    if (!window.Utils || typeof window.Utils.formatDateTime !== 'function') {
+      return '';
+    }
+
+    return window.Utils.formatDateTime(value);
+  }
+
+  sanitizeFilenamePart(value, fallback = 'file') {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) {
+      return fallback;
+    }
+
+    return text
+      .replace(/[\/\\]/g, '-')
+      .replace(/[?%*:|"<>]/g, '-')
+      .replace(/\./g, '-')
+      .replace(/\s+/g, '_')
+      .replace(/,/g, '')
+      .replace(/-+/g, '-')
+      .replace(/_+/g, '_')
+      .replace(/^[-_]+|[-_]+$/g, '');
+  }
+
+  formatFilenameDate(value) {
+    const formatted = this.formatDateTime(value);
+    if (!formatted) {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    return this.sanitizeFilenamePart(formatted, new Date().toISOString().slice(0, 10));
+  }
+
   async exportToPDF() {
     if (this.isExporting) return;
 
@@ -88,8 +122,8 @@ class PDFExporter {
         }
       }
 
-      const title = (document.getElementById('lesson-title')?.textContent || '日语课文练习').trim();
-      const filename = `${title}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.pdf`;
+      const title = this.sanitizeFilenamePart(document.getElementById('lesson-title')?.textContent || '日语课文练习', '日语课文练习');
+      const filename = `${title}_${this.formatFilenameDate(new Date().toISOString())}.pdf`;
       pdf.save(filename);
 
     } catch (err) {
@@ -126,7 +160,7 @@ class PDFExporter {
 
     wrap.innerHTML = `
         <h1 style='text-align:center;color:#ad1457;margin:0 0 8px;font-size:24px;'>📚 ${title}</h1>
-        <p style='text-align:center;margin:0 0 18px;color:#666;font-size:12px;'>生成时间: ${new Date().toLocaleString('zh-CN')}</p>
+        <p style='text-align:center;margin:0 0 18px;color:#666;font-size:12px;'>生成时间: ${this.formatDateTime(new Date().toISOString())}</p>
         ${ruby ? `<section style='margin-bottom:18px;padding:12px 16px;background:#fff3e0;border-left:4px solid #ff9800;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#ff9800;'>🔤 注音文本</h2><div style='font-size:15px;line-height:2;'>${ruby}</div></section>` : ''}
         ${translation ? `<section style='margin-bottom:18px;padding:12px 16px;background:#e8f5e8;border-left:4px solid #4caf50;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#4caf50;'>🇨🇳 中文翻译</h2><div style='font-size:15px;'>${translation}</div></section>` : ''}
         ${vocabItems.length ? `<section style='margin-bottom:18px;padding:12px 16px;background:#fce4ec;border-left:4px solid #e91e63;border-radius:6px;'><h2 style='margin:0 0 8px;font-size:16px;color:#e91e63;'>📖 词汇表</h2><div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;'>${vocabHTML}</div></section>` : ''}

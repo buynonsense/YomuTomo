@@ -77,6 +77,12 @@
               {% if item.article_title %}
               <div class="vocab-meaning">来源：{{ item.article_title }}</div>
               {% endif %}
+              {% if item.updated_at %}
+              <div class="vocab-meaning" data-vocab-updated-at="{{ item.updated_at }}">更新：</div>
+              {% endif %}
+              {% if item.mastered_at %}
+              <div class="vocab-meaning" data-vocab-mastered-at="{{ item.mastered_at }}">掌握时间：</div>
+              {% endif %}
               <div class="vocab-actions">
                 <button type="button" class="btn-icon" data-vocab-action="speak" aria-label="朗读生词">🔊</button>
                 <button type="button" class="btn-remove" data-vocab-action="toggle-mastered">{{ '取消掌握' if item.status == 'mastered' else '已掌握' }}</button>

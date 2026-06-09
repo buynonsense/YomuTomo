@@ -5,7 +5,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.model.models import Article, VocabularyEntry
-from app.utils.time import utc_now
+from app.utils.time import datetime_to_isoformat, utc_now
 
 
 def _normalize_word(word: str) -> str:
@@ -171,8 +171,8 @@ def build_vocabulary_view_rows(
                 'status': entry.status,
                 'article_id': entry.article_id,
                 'article_title': article_map.get(entry.article_id, ''),
-                'updated_at': entry.updated_at,
-                'mastered_at': entry.mastered_at,
+                'updated_at': datetime_to_isoformat(entry.updated_at),
+                'mastered_at': datetime_to_isoformat(entry.mastered_at),
             }
         )
     return view_rows
