@@ -42,29 +42,59 @@ class DummyAsyncClient:
         return {"text": "ok"}
 
 
+class DummyResponse:
+    def __init__(self, status_code: int = 200, text: str = "", json_data=None, headers=None):
+        self.status_code = status_code
+        self.text = text
+        self._json_data = json_data
+        self.headers = headers or {}
+        self.encoding = None
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        if self._json_data is None:
+            raise RuntimeError("no json")
+        return self._json_data
+
+
+class FakeHtmlResponse(DummyResponse):
+    pass
+
+
+NEWS_FEED_SOURCE_URL = "rsshub://example/news_feed"
+NEWS_FEED_JSON_URL = "https://rsshub.app/example/news_feed?format=json"
+NEWS_ITEM_URL_1 = "https://example.com/news/1"
+NEWS_ITEM_URL_2 = "https://example.com/news/2"
+NEWS_ITEM_URL_3 = "https://example.com/news/3"
+NEWS_ITEM_URL_TEST = "https://example.com/news/test-1"
+
+
 NEWS_FIXTURE_ITEMS = [
     {
         "title": "台風で強い雨　交通機関に影響",
         "title_with_ruby": "台風で<ruby>強<rt>つよ</rt></ruby>い雨　交通機関に影響",
         "outline": "台風の影響で各地で強い雨が降り、電車やバスに遅れが出ています。",
-        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
-        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+        "url": NEWS_ITEM_URL_1,
+        "source_url": NEWS_ITEM_URL_1,
         "news_id": "ne2026010100001",
     },
     {
         "title": "新しい公園がオープンした",
         "title_with_ruby": "新しい<ruby>公園<rt>こうえん</rt></ruby>がオープンした",
         "outline": "地域の新しい公園が開園し、家族連れでにぎわっています。",
-        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100002/ne2026010100002.html",
-        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100002/ne2026010100002.html",
+        "url": NEWS_ITEM_URL_2,
+        "source_url": NEWS_ITEM_URL_2,
         "news_id": "ne2026010100002",
     },
     {
         "title": "駅で忘れ物を届ける仕組みを改善",
         "title_with_ruby": "駅で<ruby>忘<rt>わす</rt></ruby>れ<ruby>物<rt>もの</rt></ruby>を届ける仕組みを改善",
         "outline": "駅構内での忘れ物をより早く持ち主に返せるように仕組みが改善されました。",
-        "url": "https://www3.nhk.or.jp/news/easy/ne2026010100003/ne2026010100003.html",
-        "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100003/ne2026010100003.html",
+        "url": NEWS_ITEM_URL_3,
+        "source_url": NEWS_ITEM_URL_3,
         "news_id": "ne2026010100003",
     },
 ]
@@ -111,7 +141,7 @@ def app_client(client: TestClient, db_session, monkeypatch: pytest.MonkeyPatch):
     from app.routers import auth, evaluation, pages
     from app.services.vocabulary import seed_vocabulary_entries as real_seed_vocabulary_entries
     from app.services import services as service_module
-    import spider.nhk_spider as spider_module
+    import spider.rsshub_spider as spider_module
 
     def current_user(request, db):
         user_id = request.session.get("user_id")
@@ -198,7 +228,7 @@ def app_client(client: TestClient, db_session, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         spider_module,
         "crawl_and_save_articles",
-        lambda user_id, selected_urls=None: {
+        lambda user_id, selected_urls=None, source_url=None: {
             "success": True,
             "message": "爬虫任务已启动，后台处理中",
             "task_id": 1,
@@ -207,8 +237,13 @@ def app_client(client: TestClient, db_session, monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: NEWS_FIXTURE_ITEMS[:limit],
+        "get_feed_items",
+        lambda source_url=None, limit=12: NEWS_FIXTURE_ITEMS[:limit],
+    )
+    monkeypatch.setattr(
+        spider_module,
+        "get_news_items",
+        lambda source_url=None, limit=12: NEWS_FIXTURE_ITEMS[:limit],
     )
     monkeypatch.setattr(service_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
     monkeypatch.setattr(service_module, "generate_ruby", lambda text, model, client: "<ruby>今天<rt>きょう</rt></ruby>")
@@ -422,6 +457,21 @@ def test_dashboard_renders_for_logged_in_user(app_client: TestClient, user_facto
     assert article.title in response.text
 
 
+def test_dashboard_uses_iso_timestamp_data_attribute(app_client: TestClient, user_factory, db_session):
+    from datetime import datetime, timezone
+
+    user = user_factory()
+    article = _create_article(db_session, user.id)
+    article.updated_at = datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc)
+    db_session.commit()
+    _login(app_client, user.email)
+
+    response = app_client.get("/dashboard")
+    assert response.status_code == 200
+    assert 'data-article-updated-at="2026-06-08T10:00:00+00:00"' in response.text
+    assert "updated_at_beijing" not in response.text
+
+
 def test_loading_page_renders(app_client: TestClient):
     response = app_client.get("/loading")
     assert response.status_code == 200
@@ -530,6 +580,38 @@ def test_vocabulary_renders_rows(app_client: TestClient, user_factory, db_sessio
     assert "天气" in response.text
 
 
+def test_vocabulary_page_renders_with_real_view_rows(app_client: TestClient, user_factory, db_session, monkeypatch: pytest.MonkeyPatch):
+    from datetime import datetime, timezone
+
+    from app.routers import articles as articles_router
+    from app.services.vocabulary import build_vocabulary_view_rows as real_build_vocabulary_view_rows
+
+    monkeypatch.setattr(articles_router, "build_vocabulary_view_rows", real_build_vocabulary_view_rows)
+
+    user = user_factory()
+    article = _create_article(db_session, user.id)
+    db_session.add(
+        VocabularyEntry(
+            user_id=user.id,
+            article_id=article.id,
+            word="天气",
+            pronunciation="てんき",
+            meaning="天气",
+            status="mastered",
+            updated_at=datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc),
+            mastered_at=datetime(2026, 6, 8, 11, 0, tzinfo=timezone.utc),
+        )
+    )
+    db_session.commit()
+
+    _login(app_client, user.email)
+    response = app_client.get("/vocabulary")
+
+    assert response.status_code == 200
+    assert "词条统计" in response.text
+    assert 'data-vocab-updated-at="2026-06-08T10:00:00+00:00"' in response.text
+
+
 def test_toggle_vocabulary_creates_entry(app_client: TestClient, user_factory):
     user = user_factory()
     _login(app_client, user.email)
@@ -619,6 +701,47 @@ def test_crawl_status_and_crawl_news_flow(app_client: TestClient, user_factory, 
     assert response.json()["success"] is True
 
 
+def test_crawl_news_skips_unavailable_first_article_and_keeps_trying(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    from spider import rsshub_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_feed_items",
+        lambda source_url=None, limit=12: [
+            {
+                "title": "",
+                "url": NEWS_ITEM_URL_1,
+                "source_url": NEWS_ITEM_URL_1,
+            },
+            {
+                "title": "第二条",
+                "outline": "这是第二条正文，可以继续处理",
+                "url": NEWS_ITEM_URL_2,
+                "source_url": NEWS_ITEM_URL_2,
+            },
+        ][:limit],
+    )
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+
+    assert result["success"] is True
+    assert result["processed_articles"] == 1
+    assert db_session.query(Article).filter(Article.user_id == user_id).count() == 1
+
+
 def test_notification_model_persists_and_marks_read(db_session, user_factory):
     user = user_factory()
     notification = Notification(
@@ -664,6 +787,7 @@ def test_notifications_api_lists_unread_and_marks_all_read(app_client: TestClien
     assert payload["unread_count"] == 1
     assert len(payload["items"]) == 1
     assert payload["items"][0]["title"] == "新闻生成完成"
+    assert payload["items"][0]["created_at"].endswith("+00:00")
 
     unread_response = app_client.get("/notifications/unread-count")
     assert unread_response.status_code == 200
@@ -677,6 +801,32 @@ def test_notifications_api_lists_unread_and_marks_all_read(app_client: TestClien
     refreshed = app_client.get("/notifications/unread-count")
     assert refreshed.status_code == 200
     assert refreshed.json()["unread_count"] == 0
+
+
+def test_notifications_service_serializes_iso_time(db_session, user_factory):
+    from app.services.notifications import list_notifications
+    from datetime import datetime, timezone
+
+    user = user_factory()
+    notification = Notification(
+        user_id=user.id,
+        type="system_error",
+        title="系统报错",
+        message="系统报错：数据库连接失败。",
+        source_task_id=None,
+        source_url="/",
+        is_read=False,
+        created_at=datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc),
+    )
+    db_session.add(notification)
+    db_session.commit()
+
+    items, unread_count = list_notifications(db_session, user.id)
+
+    assert unread_count == 1
+    assert items[0]["created_at"] == "2026-06-08T10:00:00+00:00"
+    assert items[0]["updated_at"] == "2026-06-08T10:00:00+00:00"
 
 
 def test_notifications_api_lists_without_login(app_client: TestClient):
@@ -781,21 +931,20 @@ def test_crawl_and_save_articles_writes_failure_notification_and_is_idempotent(
     db_session.commit()
     db_session.refresh(task)
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [
+        "get_feed_items",
+        lambda source_url=None, limit=12: [
             {
-                "title": "新闻",
-                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
-                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "title": "",
+                "url": NEWS_ITEM_URL_1,
+                "source_url": NEWS_ITEM_URL_1,
             }
         ],
     )
-    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
     monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
 
     result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
@@ -804,11 +953,113 @@ def test_crawl_and_save_articles_writes_failure_notification_and_is_idempotent(
     notifications = db_session.query(Notification).filter(Notification.user_id == user_id).all()
 
     assert result["success"] is False
-    assert result["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
+    assert result["message"] == "新闻生成失败：没有成功生成任何文章，请重试。"
     assert repeat_result["success"] is False
     assert len(notifications) == 1
     assert notifications[0].type == "news_failed"
     assert notifications[0].source_task_id == task.id
+
+
+def test_crawl_and_save_articles_uses_outline_fallback_when_body_fetch_fails(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    from spider import rsshub_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_feed_items",
+        lambda source_url=None, limit=12: [dict(NEWS_FIXTURE_ITEMS[0])],
+    )
+    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    result = spider_module.crawl_and_save_articles_background(user_id, task.id, None)
+
+    assert result["success"] is True
+    assert result["message"] == "新闻生成完成，可以前往“我的文章”查看。"
+    assert result["processed_articles"] == 1
+    article = db_session.query(Article).filter(Article.user_id == user_id).one()
+    assert article.original.startswith(f"来源: {NEWS_FIXTURE_ITEMS[0]['url']}\n\n")
+    assert NEWS_FIXTURE_ITEMS[0]["outline"] in article.original
+
+
+def test_get_feed_items_returns_empty_list_when_feed_unavailable(monkeypatch: pytest.MonkeyPatch):
+    from spider import rsshub_spider as spider_module
+
+    def fake_get(url, headers=None, timeout=None):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(spider_module.requests, "get", fake_get)
+
+    news_items = spider_module.get_feed_items(NEWS_FEED_SOURCE_URL, limit=5)
+
+    assert news_items == []
+
+
+def test_get_feed_items_uses_rsshub_json_feed(monkeypatch: pytest.MonkeyPatch):
+    from spider import rsshub_spider as spider_module
+
+    feed_payload = {
+        "items": [
+            {
+                "title": "新しいニュース",
+                "summary": "説明文",
+                "url": NEWS_ITEM_URL_TEST,
+                "id": "news-test-1",
+            }
+        ]
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == NEWS_FEED_JSON_URL:
+            return DummyResponse(status_code=200, json_data=feed_payload)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(spider_module.requests, "get", fake_get)
+
+    news_items = spider_module.get_feed_items(NEWS_FEED_SOURCE_URL, limit=5)
+
+    assert len(news_items) == 1
+    assert news_items[0]["title"] == "新しいニュース"
+    assert news_items[0]["url"] == NEWS_ITEM_URL_TEST
+    assert news_items[0]["outline"] == "説明文"
+
+
+def test_get_news_items_accepts_rsshub_scheme(monkeypatch: pytest.MonkeyPatch):
+    from spider import rsshub_spider as spider_module
+
+    feed_payload = {
+        "items": [
+            {
+                "title": "新しいニュース",
+                "summary": "説明文",
+                "url": NEWS_ITEM_URL_TEST,
+                "id": "news-test-1",
+            }
+        ]
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == NEWS_FEED_JSON_URL:
+            return DummyResponse(status_code=200, json_data=feed_payload)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(spider_module.requests, "get", fake_get)
+
+    news_items = spider_module.get_news_items(NEWS_FEED_SOURCE_URL, limit=5)
+
+    assert len(news_items) == 1
+    assert news_items[0]["title"] == "新しいニュース"
 
 
 def test_crawl_and_save_articles_writes_success_notification(
@@ -823,17 +1074,17 @@ def test_crawl_and_save_articles_writes_success_notification(
     db_session.commit()
     db_session.refresh(task)
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [
+        "get_feed_items",
+        lambda source_url=None, limit=12: [
             {
                 "title": "新闻",
-                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
-                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "url": NEWS_ITEM_URL_1,
+                "source_url": NEWS_ITEM_URL_1,
             }
         ],
     )
@@ -860,10 +1111,65 @@ def test_news_center_renders_multiple_items(app_client: TestClient, user_factory
     response = app_client.get("/news_center?limit=2")
 
     assert response.status_code == 200
-    assert "NHK 新闻中心" in response.text
+    assert "新闻中心" in response.text
+    assert "RSSHub" in response.text
     assert NEWS_FIXTURE_ITEMS[0]["title"] in response.text
     assert NEWS_FIXTURE_ITEMS[1]["title"] in response.text
     assert NEWS_FIXTURE_ITEMS[2]["title"] not in response.text
+
+
+def test_preview_rsshub_feed_returns_items(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    feed_payload = {
+        "items": [
+            {
+                "title": "新しいニュース",
+                "summary": "説明文",
+                "url": NEWS_ITEM_URL_TEST,
+                "id": "news-test-1",
+            }
+        ]
+    }
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == NEWS_FEED_JSON_URL:
+            return DummyResponse(status_code=200, json_data=feed_payload)
+        raise AssertionError(f"unexpected url: {url}")
+
+    from spider import rsshub_spider as spider_module
+
+    monkeypatch.setattr(spider_module.requests, "get", fake_get)
+
+    response = app_client.post("/preview_rsshub_feed", json={"source_url": NEWS_FEED_SOURCE_URL})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["count"] == 1
+    assert payload["items"][0]["title"] == "新しいニュース"
+    assert payload["items"][0]["outline"] == "説明文"
+
+
+def test_preview_rsshub_feed_rejects_non_rsshub_http_url(app_client: TestClient, user_factory):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    response = app_client.post("/preview_rsshub_feed", json={"source_url": "https://example.com/news"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is False
+
+
+def test_rsshub_normalizer_rejects_external_http_url():
+    from app.services.rsshub_feed import normalize_rsshub_source_url
+
+    assert normalize_rsshub_source_url("https://example.com/news") is None
+    assert normalize_rsshub_source_url("javascript:alert(1)") is None
+    assert normalize_rsshub_source_url("rsshub://example/news_feed") == NEWS_FEED_JSON_URL
+    assert normalize_rsshub_source_url("/example/news_feed") == NEWS_FEED_JSON_URL
 
 
 def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):
@@ -872,12 +1178,12 @@ def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_facto
 
     captured = {}
 
-    def fake_crawl(user_id, selected_urls=None):
+    def fake_crawl(user_id, selected_urls=None, source_url=None):
         captured["user_id"] = user_id
         captured["selected_urls"] = list(selected_urls or [])
         return {"success": True, "message": "爬虫任务已启动，后台处理中", "task_id": 99}
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "crawl_and_save_articles", fake_crawl)
 
@@ -887,6 +1193,30 @@ def test_crawl_news_accepts_selected_news_url(app_client: TestClient, user_facto
     assert response.json()["success"] is True
     assert captured["user_id"] == user.id
     assert captured["selected_urls"] == [NEWS_FIXTURE_ITEMS[1]["source_url"]]
+
+
+def test_crawl_news_accepts_selected_news_web_url(app_client: TestClient, user_factory, monkeypatch: pytest.MonkeyPatch):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    captured = {}
+
+    def fake_crawl(user_id, selected_urls=None, source_url=None):
+        captured["user_id"] = user_id
+        captured["selected_urls"] = list(selected_urls or [])
+        return {"success": True, "message": "爬虫任务已启动，后台处理中", "task_id": 100}
+
+    from spider import rsshub_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "crawl_and_save_articles", fake_crawl)
+
+    news_web_url = NEWS_ITEM_URL_2
+    response = app_client.post("/crawl_news", json={"news_url": news_web_url})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert captured["user_id"] == user.id
+    assert captured["selected_urls"] == [news_web_url]
 
 
 def test_crawl_and_save_articles_marks_failed_when_no_article_created(db_session, user_factory, monkeypatch: pytest.MonkeyPatch):
@@ -900,15 +1230,14 @@ def test_crawl_and_save_articles_marks_failed_when_no_article_created(db_session
     task_id = task.id
     task_id = task.id
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [{"title": "新闻", "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html", "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html"}],
+        "get_feed_items",
+        lambda source_url=None, limit=12: [{"title": "", "url": NEWS_ITEM_URL_1, "source_url": NEWS_ITEM_URL_1}],
     )
-    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
     monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
 
     spider_module.crawl_and_save_articles_background(user.id, task.id, None)
@@ -919,51 +1248,45 @@ def test_crawl_and_save_articles_marks_failed_when_no_article_created(db_session
     assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
 
 
-def test_crawl_and_save_articles_background_returns_clear_failure_message_when_body_fetch_fails(
-    app_client: TestClient,
+def test_crawl_and_save_articles_background_uses_outline_when_content_missing(
     db_session,
     user_factory,
     monkeypatch: pytest.MonkeyPatch,
-): 
+):
     user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
     user_id = user.id
-    user_email = user.email
     task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
     task_id = task.id
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [
+        "get_feed_items",
+        lambda source_url=None, limit=12: [
             {
-                "title": "新闻",
-                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
-                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "title": "",
+                "outline": "这是正文内容，可以继续处理",
+                "url": NEWS_ITEM_URL_1,
+                "source_url": NEWS_ITEM_URL_1,
             }
         ],
     )
-    monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
     monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
 
     result = spider_module.crawl_and_save_articles_background(user.id, task_id, None)
 
-    _login(app_client, user_email)
-    status_response = app_client.get("/crawl_status")
-
     refreshed_task = db_session.get(CrawlTask, task_id)
-    assert result["success"] is False
-    assert result["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
-    assert status_response.status_code == 200
-    assert status_response.json()["message"] == "正文抓取失败：未能提取到新闻正文，请稍后重试。"
-    assert refreshed_task.status == "failed"
-    assert refreshed_task.processed_articles == 0
-    assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
+    assert result["success"] is True
+    assert result["message"] == "新闻生成完成，可以前往“我的文章”查看。"
+    assert refreshed_task.status == "completed"
+    assert refreshed_task.processed_articles == 1
+    article = db_session.query(Article).filter(Article.user_id == user_id).one()
+    assert "这是正文内容，可以继续处理" in article.original
 
 
 def test_crawl_and_save_articles_background_returns_generic_failure_message_when_no_article_is_generated(
@@ -979,17 +1302,17 @@ def test_crawl_and_save_articles_background_returns_generic_failure_message_when
     db_session.refresh(task)
     task_id = task.id
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [
+        "get_feed_items",
+        lambda source_url=None, limit=12: [
             {
                 "title": "新闻",
-                "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
-                "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html",
+                "url": NEWS_ITEM_URL_1,
+                "source_url": NEWS_ITEM_URL_1,
             }
         ],
     )
@@ -1013,23 +1336,64 @@ def test_crawl_custom_url_starts_background_task(app_client: TestClient, user_fa
 
     captured = {}
 
-    def fake_crawl(user_id, url):
+    def fake_crawl(user_id, url, selected_urls=None):
         captured["user_id"] = user_id
         captured["url"] = url
+        captured["selected_urls"] = list(selected_urls or [])
         return {"success": True, "message": "自定义 URL 已启动，后台处理中", "task_id": 101, "selected_urls": [url]}
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "crawl_custom_url", fake_crawl)
 
-    response = app_client.post("/crawl_custom_url", json={"url": "https://example.com/jp-article"})
+    response = app_client.post("/crawl_custom_url", json={"url": NEWS_FEED_SOURCE_URL})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
     assert payload["task_id"] == 101
     assert captured["user_id"] == user.id
-    assert captured["url"] == "https://example.com/jp-article"
+    assert captured["url"] == NEWS_FEED_JSON_URL
+
+
+def test_crawl_custom_url_uses_outline_when_content_missing(
+    db_session,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    user_id = user.id
+    task = CrawlTask(user_id=user.id, status="pending", total_articles=1, processed_articles=0)
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    task_id = task.id
+
+    from spider import rsshub_spider as spider_module
+
+    monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(
+        spider_module,
+        "get_news_items",
+        lambda source_url=None, limit=12: [
+            {
+                "title": "自定义新闻标题",
+                "outline": "这是新闻中心条目的摘要，应该在自定义 URL 里兜底使用。",
+                "url": NEWS_ITEM_URL_2,
+                "source_url": NEWS_ITEM_URL_2,
+            }
+        ],
+    )
+    monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
+
+    spider_module._crawl_custom_url_background(user.id, task_id, NEWS_FEED_SOURCE_URL)
+
+    refreshed_task = db_session.get(CrawlTask, task_id)
+    assert refreshed_task.status == "completed"
+    assert refreshed_task.processed_articles == 1
+    article = db_session.query(Article).filter(Article.user_id == user_id).order_by(Article.id.desc()).first()
+    assert article is not None
+    assert "这是新闻中心条目的摘要" in article.original
 
 
 def test_crawl_custom_url_rejects_invalid_scheme(app_client: TestClient, user_factory):

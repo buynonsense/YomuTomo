@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Form, Depends, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from app.core.config import settings
 from app.db import get_db
 from app.model.models import User, Article
 from app.routers.context import get_current_user
@@ -12,7 +13,9 @@ from app.services.ai_client_async import AIClient, AIClientError
 from app.services import services as service_module
 from app.services.notifications import create_notification
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
-from app.utils.time import to_beijing_time, utc_now
+from app.services.rsshub_feed import fetch_rsshub_feed_items, normalize_rsshub_source_url
+from app.utils.templates import create_templates
+from app.utils.time import datetime_to_isoformat, utc_now
 
 # Backward-compatible module-level aliases for tests and older call sites.
 get_openai_client = service_module.get_openai_client
@@ -81,10 +84,9 @@ async def dashboard(
     )
     
     for article in articles:
-        article.updated_at_beijing = to_beijing_time(article.updated_at)
+        article.updated_at_iso = datetime_to_isoformat(article.updated_at)
     
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
+    templates = create_templates("templates")
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -101,13 +103,12 @@ async def dashboard(
 
 @router.get("/loading", response_class=HTMLResponse, summary="显示处理中页面")
 async def show_loading(request: Request, db: Session = Depends(get_db)):
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
+    templates = create_templates("templates")
     user = get_current_user(request, db)
     return templates.TemplateResponse(request, "loading.html", {"user": user})
 
 
-@router.get("/news_center", response_class=HTMLResponse, summary="NHK 新闻中心")
+@router.get("/news_center", response_class=HTMLResponse, summary="RSS 订阅中心")
 async def news_center(
     request: Request,
     limit: int = Query(12, ge=1, le=20, description="展示的新闻数量"),
@@ -117,11 +118,10 @@ async def news_center(
     if not user:
         return RedirectResponse(url="/login", status_code=303)
 
-    from fastapi.templating import Jinja2Templates
-    from spider.nhk_spider import get_nhk_easy_news
+    from spider.rsshub_spider import get_feed_items
 
-    news_items = get_nhk_easy_news(limit=limit)
-    templates = Jinja2Templates(directory="templates")
+    news_items = get_feed_items(limit=limit)
+    templates = create_templates("templates")
     return templates.TemplateResponse(
         request,
         "news_center.html",
@@ -130,15 +130,59 @@ async def news_center(
             "news_items": news_items,
             "limit": limit,
             "news_count": len(news_items),
+            "default_news_source_url": settings.NEWS_CENTER_SOURCE_URL,
         },
     )
+
+
+@router.post("/preview_rsshub_feed", summary="预览 RSS 订阅源")
+async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "message": "未登录"}
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+
+    raw_source_url = None
+    limit = 12
+    if isinstance(payload, dict):
+        raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+        raw_limit = payload.get("limit")
+        if raw_limit is not None:
+            try:
+                limit = max(1, min(int(raw_limit), 20))
+            except Exception:
+                limit = 12
+
+    if not isinstance(raw_source_url, str) or not raw_source_url.strip():
+        return {"success": False, "message": "请提供有效的 RSS 订阅链接"}
+
+    normalized_source = normalize_rsshub_source_url(raw_source_url)
+    if not normalized_source:
+        return {"success": False, "message": "请提供有效的 RSSHub 路由或订阅源 URL"}
+
+    try:
+        items = fetch_rsshub_feed_items(normalized_source, limit=limit)
+        return {
+            "success": True,
+            "message": "已获取预览结果" if items else "未抓到可用条目",
+            "source_url": raw_source_url.strip(),
+            "normalized_source_url": normalized_source,
+            "items": items,
+            "count": len(items),
+        }
+    except Exception as e:
+        log_with_time(f"❌ 预览 RSS 订阅源失败 source_url={raw_source_url}: {e}")
+        return {"success": False, "message": f"预览失败：{str(e)}", "items": [], "count": 0}
 
 
 @router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")
 async def show_result(request: Request, db: Session = Depends(get_db)):
     # 从sessionStorage获取处理结果
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
+    templates = create_templates("templates")
     user = get_current_user(request, db)
 
     # 这里需要从请求中获取数据，暂时返回一个占位符
@@ -284,8 +328,7 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
     vocab = attach_vocab_state(db, user.id, vocab)
     highlight_notification = request.query_params.get("highlight_notification", "")
     highlight_article = request.query_params.get("highlight_article", "")
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
+    templates = create_templates("templates")
     return templates.TemplateResponse(
         request,
         "reading.html",
@@ -313,8 +356,7 @@ async def vocabulary_book(request: Request, status: str = Query(None, descriptio
     mastered_count = sum(1 for row in vocab_rows if row['status'] == 'mastered')
     learning_count = sum(1 for row in vocab_rows if row['status'] == 'learning')
 
-    from fastapi.templating import Jinja2Templates
-    templates = Jinja2Templates(directory="templates")
+    templates = create_templates("templates")
     return templates.TemplateResponse(
         request,
         "vocabulary.html",
@@ -418,12 +460,13 @@ async def test_ai_config(
         return {"success": False, "error": str(e)}
 
 
-@router.post("/crawl_news", summary="爬取NHK新闻并生成文章")
+@router.post("/crawl_news", summary="爬取订阅源并生成文章")
 async def crawl_news(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
 
+    source_url = None
     selected_urls: list[str] = []
     try:
         payload = await request.json()
@@ -431,6 +474,15 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
         payload = None
 
     if isinstance(payload, dict):
+        raw_source_url = payload.get("source_url") or payload.get("feed_url")
+        if isinstance(raw_source_url, str):
+            raw_source_url = raw_source_url.strip()
+            if raw_source_url:
+                normalized_source_url = normalize_rsshub_source_url(raw_source_url)
+                if not normalized_source_url:
+                    return {"success": False, "message": "请提供有效的 RSSHub 路由或订阅源 URL"}
+                source_url = normalized_source_url
+
         raw_selected = payload.get("news_urls")
         if raw_selected is None:
             raw_selected = payload.get("selected_urls")
@@ -443,11 +495,11 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
                 if not isinstance(item, str):
                     continue
                 value = item.strip()
-                if value and value.startswith("https://www3.nhk.or.jp/news/easy/"):
+                if value and value.startswith(("http://", "https://", "rsshub://")):
                     selected_urls.append(value)
 
     if selected_urls:
-        # 保持仅抓取 NHK Easy 正式条目，避免无效链接污染后台任务
+        # 保持只抓取有效 URL，避免无效链接污染后台任务
         selected_urls = list(dict.fromkeys(selected_urls))
     
     try:
@@ -473,35 +525,54 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
         except Exception as e:
             return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
         
-        from spider.nhk_spider import crawl_and_save_articles
-        if selected_urls:
-            result = crawl_and_save_articles(user.id, selected_urls=selected_urls)
-        else:
-            result = crawl_and_save_articles(user.id)
+        from spider.rsshub_spider import crawl_and_save_articles
+        result = crawl_and_save_articles(user.id, selected_urls=selected_urls or None, source_url=source_url)
         return result
     except Exception as e:
         return {"success": False, "message": str(e)}
 
 
-@router.post("/crawl_custom_url", summary="抓取自定义 URL 并生成文章")
+@router.post("/crawl_custom_url", summary="抓取自定义订阅源并生成文章")
 async def crawl_custom_url_endpoint(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return {"success": False, "message": "未登录"}
 
+    source_url = None
+    selected_urls: list[str] = []
     try:
         payload = await request.json()
     except Exception:
         payload = None
 
-    url = None
     if isinstance(payload, dict):
-        raw_url = payload.get("url") or payload.get("source_url") or payload.get("page_url")
+        raw_url = payload.get("source_url") or payload.get("url") or payload.get("page_url") or payload.get("feed_url")
         if isinstance(raw_url, str):
-            url = raw_url.strip()
+            normalized_source_url = normalize_rsshub_source_url(raw_url)
+            if not normalized_source_url:
+                return {"success": False, "message": "请提供有效的 RSSHub 路由或订阅源 URL"}
+            source_url = normalized_source_url
 
-    if not url:
+        raw_selected = payload.get("selected_urls")
+        if raw_selected is None:
+            raw_selected = payload.get("news_urls")
+        if raw_selected is None and payload.get("news_url"):
+            raw_selected = [payload.get("news_url")]
+        if isinstance(raw_selected, str):
+            raw_selected = [raw_selected]
+        if isinstance(raw_selected, list):
+            for item in raw_selected:
+                if not isinstance(item, str):
+                    continue
+                value = item.strip()
+                if value and value.startswith(("http://", "https://", "rsshub://")):
+                    selected_urls.append(value)
+
+    if not source_url:
         return {"success": False, "message": "请提供有效的 URL"}
+
+    if selected_urls:
+        selected_urls = list(dict.fromkeys(selected_urls))
 
     try:
         fresh = db.query(User).filter(User.id == user.id).first()
@@ -515,9 +586,9 @@ async def crawl_custom_url_endpoint(request: Request, db: Session = Depends(get_
         client = AIClient.factory(provider)
         await client.chat([{"role": "user", "content": "Hello"}])
 
-        from spider.nhk_spider import crawl_custom_url
+        from spider.rsshub_spider import crawl_custom_url
 
-        return crawl_custom_url(user.id, url)
+        return crawl_custom_url(user.id, source_url, selected_urls=selected_urls or None)
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -602,7 +673,7 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
     if not task:
         return {"status": "no_task"}
 
-    from spider.nhk_spider import TASK_FAILURE_MESSAGES
+    from spider.rsshub_spider import TASK_FAILURE_MESSAGES
 
     message = TASK_FAILURE_MESSAGES.get(task.id)
     
@@ -611,8 +682,8 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
         "status": task.status,
         "total_articles": task.total_articles,
         "processed_articles": task.processed_articles,
-        "created_at": task.created_at.isoformat(),
-        "updated_at": task.updated_at.isoformat()
+        "created_at": datetime_to_isoformat(task.created_at),
+        "updated_at": datetime_to_isoformat(task.updated_at),
     }
 
     if message:

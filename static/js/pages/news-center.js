@@ -4,11 +4,44 @@
   document.addEventListener('DOMContentLoaded', function () {
     const customUrlInput = document.getElementById('custom-url-input');
     const customUrlSubmit = document.getElementById('custom-url-submit');
-    const cards = Array.from(document.querySelectorAll('[data-news-card]'));
+    const previewPanel = document.getElementById('rsshub-preview-panel');
+    const previewGrid = document.getElementById('rsshub-preview-grid');
+    const previewEmpty = document.getElementById('rsshub-preview-empty');
+    const previewMeta = document.getElementById('rsshub-preview-meta');
     const crawlButtons = Array.from(document.querySelectorAll('.news-crawl-btn'));
 
     let pollTimer = null;
+    let activeCrawlButton = null;
     const NOTIFIED_TASK_IDS_KEY = 'newsCenterNotifiedTaskIds';
+
+    function getNewsCards() {
+      return Array.from(document.querySelectorAll('[data-news-card]'));
+    }
+
+    function getCrawlButtons() {
+      return Array.from(document.querySelectorAll('.news-crawl-btn'));
+    }
+
+    function getSafeLink(url) {
+      if (typeof url !== 'string') {
+        return '#';
+      }
+
+      const value = url.trim();
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+      }
+
+      return '#';
+    }
+
+    function formatTime(value) {
+      if (!window.Utils || typeof window.Utils.formatDateTime !== 'function') {
+        return '';
+      }
+
+      return window.Utils.formatDateTime(value);
+    }
 
     function getNotifiedTaskIds() {
       try {
@@ -57,6 +90,24 @@
 
       if (typeof window.TaskState.setNewsNavBusy === 'function') {
         window.TaskState.setNewsNavBusy(false);
+      }
+    }
+
+    function restoreActiveCrawlButton() {
+      if (!activeCrawlButton) {
+        return;
+      }
+
+      const button = activeCrawlButton;
+      activeCrawlButton = null;
+      button.disabled = false;
+      setButtonLabel(button, button.dataset.originalText || '生成文章');
+      button.classList.remove('is-loading');
+      setLoadingShellState(button, false);
+
+      const card = button.closest('[data-news-card]');
+      if (card) {
+        card.classList.remove('is-busy');
       }
     }
 
@@ -150,7 +201,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      crawlButtons.forEach((button) => {
+      getCrawlButtons().forEach((button) => {
         button.disabled = disabled;
       });
       if (customUrlSubmit) {
@@ -159,7 +210,7 @@
       if (customUrlInput) {
         customUrlInput.disabled = disabled;
       }
-      cards.forEach((card) => {
+      getNewsCards().forEach((card) => {
         card.classList.toggle('is-busy', disabled);
       });
     }
@@ -176,6 +227,7 @@
       }
 
       stopPolling();
+      restoreActiveCrawlButton();
       setButtonsDisabled(false);
       clearTaskState();
 
@@ -209,6 +261,8 @@
         notify(message, 'error');
         return;
       }
+
+      restoreActiveCrawlButton();
     }
 
     function notify(message, type) {
@@ -308,13 +362,21 @@
       const card = button.closest('[data-news-card]');
       const newsUrl = card ? card.dataset.newsUrl || '' : '';
       const newsTitle = card ? card.dataset.newsTitle || '这条新闻' : '这条新闻';
+      const sourceUrl = card ? card.dataset.newsSourceUrl || '' : '';
+      const endpoint = card ? card.dataset.crawlEndpoint || '/crawl_news' : '/crawl_news';
 
       if (!newsUrl) {
         notify('未找到可用的新闻链接', 'error');
         return;
       }
 
+      if (!sourceUrl) {
+        notify('未找到可用的订阅源链接', 'error');
+        return;
+      }
+
       setButtonsDisabled(true);
+      activeCrawlButton = button;
       button.disabled = true;
       button.dataset.originalText = button.querySelector('.btn-label')?.textContent || button.textContent;
       setButtonLabel(button, '处理中…');
@@ -323,12 +385,16 @@
       card.classList.add('is-busy');
 
       try {
-        const response = await fetch('/crawl_news', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ news_url: newsUrl })
+          body: JSON.stringify({
+            source_url: sourceUrl,
+            selected_urls: [newsUrl],
+            news_url: newsUrl
+          })
         });
         const data = await response.json();
 
@@ -336,63 +402,242 @@
           throw new Error(data.message || data.error || '启动失败');
         }
 
-        setTaskProcessing(data.task_id, 'news_crawl', new Date().toISOString());
+        setTaskProcessing(data.task_id, endpoint === '/crawl_custom_url' ? 'custom_url_crawl' : 'news_crawl', new Date().toISOString());
         notify(`${newsTitle} 已开始生成文章`, 'success');
         startPolling();
       } catch (error) {
         console.error('启动新闻爬取失败', error);
         notify(error.message || '启动失败', 'error');
+        restoreActiveCrawlButton();
         setButtonsDisabled(false);
-        setButtonLabel(button, button.dataset.originalText || '生成文章');
-        button.classList.remove('is-loading');
-        setLoadingShellState(button, false);
-        card.classList.remove('is-busy');
       } finally {
         if (!pollTimer) {
-          button.disabled = false;
-          setButtonLabel(button, button.dataset.originalText || '生成文章');
-          button.classList.remove('is-loading');
-          setLoadingShellState(button, false);
-          card.classList.remove('is-busy');
+          if (activeCrawlButton === button) {
+            restoreActiveCrawlButton();
+          } else {
+            button.disabled = false;
+            setButtonLabel(button, button.dataset.originalText || '生成文章');
+            button.classList.remove('is-loading');
+            setLoadingShellState(button, false);
+            card.classList.remove('is-busy');
+          }
         }
       }
     }
 
-    async function startCustomUrlCrawl() {
-      const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
-      if (!customUrl) {
-        notify('请先输入一个 URL', 'error');
+    function setPreviewPanelState(visible) {
+      if (!previewPanel) {
         return;
       }
 
-      setButtonsDisabled(true);
+      previewPanel.hidden = !visible;
+    }
+
+    function clearPreviewPanel() {
+      if (previewGrid) {
+        previewGrid.innerHTML = '';
+      }
+      if (previewEmpty) {
+        previewEmpty.hidden = true;
+      }
+      if (previewMeta) {
+        previewMeta.textContent = '预览结果会显示在这里，点击条目上的按钮即可生成文章。';
+      }
+      setPreviewPanelState(false);
+    }
+
+    function formatNewsTimeElements(root) {
+      const scope = root || document;
+      scope.querySelectorAll('[data-news-published-at-display]').forEach((element) => {
+        const value = element.getAttribute('data-news-published-at-display');
+        const formattedTime = formatTime(value);
+
+        if (formattedTime) {
+          element.textContent = `发布时间：${formattedTime}`;
+        } else {
+          element.textContent = '发布时间：';
+        }
+      });
+    }
+
+    function createPreviewCard(item, sourceUrl) {
+      const article = document.createElement('article');
+      article.className = 'news-card';
+      article.dataset.newsCard = 'true';
+      article.dataset.newsPreviewCard = 'true';
+      article.dataset.newsUrl = (item && (item.source_url || item.url) ? String(item.source_url || item.url) : '').trim();
+      article.dataset.newsTitle = (item && item.title ? String(item.title) : '未命名条目').trim();
+      article.dataset.newsSourceUrl = sourceUrl || '';
+      article.dataset.newsPublishedAt = (item && typeof item.published_at === 'string' ? item.published_at : '').trim();
+      article.dataset.crawlEndpoint = '/crawl_custom_url';
+
+      const top = document.createElement('div');
+      top.className = 'news-card__top';
+
+      const badge = document.createElement('span');
+      badge.className = 'news-card__badge';
+      badge.textContent = '预览';
+
+      const originalLink = document.createElement('a');
+      originalLink.className = 'btn-secondary';
+      originalLink.title = '查看原文';
+      originalLink.setAttribute('aria-label', '查看原文');
+      originalLink.target = '_blank';
+      originalLink.rel = 'noreferrer noopener';
+      originalLink.href = getSafeLink(article.dataset.newsUrl);
+      originalLink.textContent = '原文';
+
+      top.appendChild(badge);
+      top.appendChild(originalLink);
+
+      const title = document.createElement('h3');
+      title.className = 'news-card__title';
+      title.textContent = article.dataset.newsTitle || '未命名条目';
+
+      const publishedAt = article.dataset.newsPublishedAt || '';
+      if (publishedAt) {
+        const time = document.createElement('div');
+        time.className = 'news-card__time';
+        const formattedTime = formatTime(publishedAt);
+        time.textContent = formattedTime ? `发布时间：${formattedTime}` : '发布时间：';
+        article.appendChild(time);
+      }
+
+      const outlineText = document.createElement('p');
+      outlineText.className = 'news-card__outline';
+      const outline = item && typeof item.outline === 'string' && item.outline.trim()
+        ? item.outline.trim()
+        : (item && typeof item.content === 'string' && item.content.trim() ? item.content.trim() : '暂无摘要');
+      outlineText.textContent = outline;
+
+      const actions = document.createElement('div');
+      actions.className = 'news-card__actions';
+
+      const shell = document.createElement('div');
+      shell.className = 'btn-loading-shell';
+
+      const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      ring.setAttribute('class', 'loading-ring');
+      ring.setAttribute('viewBox', '0 0 120 52');
+      ring.setAttribute('aria-hidden', 'true');
+      ring.setAttribute('focusable', 'false');
+      ring.setAttribute('preserveAspectRatio', 'none');
+
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', '2');
+      rect.setAttribute('y', '2');
+      rect.setAttribute('width', '116');
+      rect.setAttribute('height', '48');
+      rect.setAttribute('rx', '24');
+      rect.setAttribute('ry', '24');
+      ring.appendChild(rect);
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-primary news-crawl-btn btn-with-loading-ring';
+      button.innerHTML = '<span class="btn-label">生成文章</span>';
+      button.addEventListener('click', function () {
+        startCrawl(button);
+      });
+
+      shell.appendChild(ring);
+      shell.appendChild(button);
+      actions.appendChild(shell);
+
+      article.appendChild(top);
+      article.appendChild(title);
+      article.appendChild(outlineText);
+      article.appendChild(actions);
+
+      return article;
+    }
+
+    function renderPreviewItems(items, sourceUrl) {
+      if (!previewGrid) {
+        return;
+      }
+
+      previewGrid.innerHTML = '';
+
+      const normalizedItems = Array.isArray(items) ? items : [];
+      if (previewMeta) {
+        const label = sourceUrl || '当前订阅源';
+        previewMeta.textContent = normalizedItems.length > 0
+          ? `已预览 ${normalizedItems.length} 条来自 ${label} 的内容，点击“生成文章”即可入库。`
+          : `已经获取到 ${label} 的预览结果，但没有可用条目。`;
+      }
+
+      if (normalizedItems.length === 0) {
+        if (previewEmpty) {
+          previewEmpty.hidden = false;
+        }
+        setPreviewPanelState(true);
+        return;
+      }
+
+      if (previewEmpty) {
+        previewEmpty.hidden = true;
+      }
+
+      normalizedItems.forEach((item) => {
+        const card = createPreviewCard(item, sourceUrl);
+        previewGrid.appendChild(card);
+      });
+
+      setPreviewPanelState(true);
+      formatNewsTimeElements(previewGrid);
+    }
+
+    async function previewCustomUrl() {
+      const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+      if (!customUrl) {
+        notify('请先输入一个订阅链接', 'error');
+        return;
+      }
+
+      if (customUrlInput) {
+        customUrlInput.disabled = true;
+      }
+      if (customUrlSubmit) {
+        customUrlSubmit.disabled = true;
+      }
       customUrlSubmit.dataset.originalText = customUrlSubmit.querySelector('.btn-label')?.textContent || customUrlSubmit.textContent;
-      setButtonLabel(customUrlSubmit, '处理中…');
+      setButtonLabel(customUrlSubmit, '预览中…');
       customUrlSubmit.classList.add('is-loading');
       setLoadingShellState(customUrlSubmit, true);
 
       try {
-        const response = await fetch('/crawl_custom_url', {
+        const response = await fetch('/preview_rsshub_feed', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ url: customUrl })
+          body: JSON.stringify({ source_url: customUrl })
         });
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-          throw new Error(data.message || data.error || '启动失败');
+          throw new Error(data.message || data.error || '预览失败');
         }
 
-        setTaskProcessing(data.task_id, 'custom_url_crawl', new Date().toISOString());
-        notify('自定义 URL 已开始处理', 'success');
-        startPolling();
+        renderPreviewItems(data.items || [], data.source_url || customUrl);
+        notify(
+          data.count > 0 ? `已预览 ${data.count} 条订阅内容` : (data.message || '未抓到可用条目'),
+          data.count > 0 ? 'success' : 'warning',
+        );
       } catch (error) {
-        console.error('启动自定义 URL 失败', error);
-        notify(error.message || '启动失败', 'error');
-        setButtonsDisabled(false);
-        setButtonLabel(customUrlSubmit, customUrlSubmit.dataset.originalText || '抓取并生成');
+        console.error('预览自定义订阅源失败', error);
+        clearPreviewPanel();
+        notify(error.message || '预览失败', 'error');
+        setButtonLabel(customUrlSubmit, customUrlSubmit.dataset.originalText || '预览订阅源');
+      } finally {
+        if (customUrlInput) {
+          customUrlInput.disabled = false;
+        }
+        if (customUrlSubmit) {
+          customUrlSubmit.disabled = false;
+        }
+        setButtonLabel(customUrlSubmit, customUrlSubmit.dataset.originalText || '预览订阅源');
         customUrlSubmit.classList.remove('is-loading');
         setLoadingShellState(customUrlSubmit, false);
       }
@@ -408,6 +653,8 @@
       refreshStatus();
     }
 
+    formatNewsTimeElements(document);
+
     crawlButtons.forEach((button) => {
       button.addEventListener('click', function () {
         startCrawl(button);
@@ -416,7 +663,7 @@
 
     if (customUrlSubmit) {
       customUrlSubmit.addEventListener('click', function () {
-        startCustomUrlCrawl();
+        previewCustomUrl();
       });
     }
 

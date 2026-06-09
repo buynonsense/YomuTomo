@@ -8,7 +8,7 @@ import pytest
 
 from app.services.ai_client_async import AIClientError, GeminiClient, OpenAICompatClient
 from app.services import ai_client_async
-from spider.nhk_spider import generate_simplified_article, get_article_content
+from spider.rsshub_spider import generate_simplified_article, get_article_content
 
 
 class FakeResponse:
@@ -174,6 +174,83 @@ def test_generate_simplified_article_falls_back_to_original_text():
 
 
 def test_get_article_content_returns_none_when_fetch_fails(monkeypatch):
-    monkeypatch.setattr("spider.nhk_spider.requests.get", lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")))
+    monkeypatch.setattr("app.services.rsshub_feed.requests.get", lambda *args, **kwargs: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")))
 
-    assert get_article_content("https://www3.nhk.or.jp/news/easy/test.html") is None
+    assert get_article_content("https://example.com/news/1") is None
+
+
+def test_get_article_content_reads_rsshub_json_feed(monkeypatch):
+    source_url = "rsshub://example/news_feed"
+    feed_url = "https://rsshub.app/example/news_feed?format=json"
+
+    class Response:
+        status_code = 200
+        text = ""
+        url = feed_url
+        encoding = None
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "items": [
+                    {
+                        "title": "安定的な皇位継承 とりまとめ案報告の協議終わる",
+                        "summary": "安定的な皇位継承をめぐり、衆参両院の議長・副議長と各党・各会派との協議が行われました。",
+                        "url": "https://example.com/news/1",
+                        "id": "news-1",
+                    }
+                ]
+            }
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == feed_url:
+            return Response()
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr("app.services.rsshub_feed.requests.get", fake_get)
+
+    result = get_article_content(source_url)
+
+    assert result is not None
+    assert "安定的な皇位継承" in result
+
+
+def test_get_article_content_strips_html_from_rsshub_feed(monkeypatch):
+    source_url = "rsshub://example/news_feed"
+    feed_url = "https://rsshub.app/example/news_feed?format=json"
+
+    class Response:
+        status_code = 200
+        text = ""
+        url = feed_url
+        encoding = None
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "items": [
+                    {
+                        "title": "安定的な皇位継承 とりまとめ案報告の協議終わる",
+                        "content_html": "<p>安定的な皇位継承をめぐり、<strong>衆参両院</strong>の議長・副議長と各党・各会派との協議が行われました。</p>",
+                        "url": "https://example.com/news/1",
+                        "id": "news-1",
+                    }
+                ]
+            }
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == feed_url:
+            return Response()
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr("app.services.rsshub_feed.requests.get", fake_get)
+
+    result = get_article_content(source_url)
+
+    assert result is not None
+    assert "<" not in result
+    assert "衆参両院" in result

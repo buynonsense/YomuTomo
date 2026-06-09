@@ -268,6 +268,38 @@ const Utils = {
       .replace('DD', day);
   },
 
+  formatDateTime(value, options = {}) {
+    if (!value) {
+      return '';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    const locale = options.locale || 'zh-CN';
+    const formatOptions = {
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      ...options,
+    };
+
+    delete formatOptions.locale;
+
+    try {
+      return date.toLocaleString(locale, formatOptions);
+    } catch (error) {
+      console.error('格式化日期时间失败', error);
+      return '';
+    }
+  },
+
   // Copy to clipboard
   async copyToClipboard(text) {
     try {

@@ -23,7 +23,7 @@
 | `templates/` | Jinja2 模板 (8 个主要 html + partials) |
 | `static/js/modules/` | 前端 JS 模块 (speech-recognition, pdf-export, text-highlight, ai-config, notifications) |
 | `static/css/components/` | CSS 组件 (buttons, forms, layout, modal-animations, common) |
-| `spider/nhk_spider.py` | NHK Easy 新闻爬虫 (后台线程) |
+| `spider/rsshub_spider.py` | RSSHub 订阅源抓取、预览与文章生成编排 |
 
 ## 关键命令
 
@@ -130,7 +130,7 @@ make format && make lint
 - 日志使用北京时间 (`UTC+8`), 数据库时间存 UTC
 - `app/main.py` 会在启动时重试数据库连接 (最多 10 次, 间隔 3 秒)
 - 用户等级 `level` 字段 (1-5) 影响新闻简化难度
-- NHK 爬虫只抓取最新 1 条新闻, 在后台线程中执行 (`crawl_and_save_articles_background`)
+- 新闻中心以 RSSHub 订阅源为主，先预览再选择条目生成文章，后台任务仍在独立线程中执行
 - 新闻任务和首页文章生成成功/失败都要写入通知中心，失败信息要可读，不能只靠瞬时 toast
 - 通知卡片的“查看”入口优先跳转到对应页面，并通过 query 参数触发高亮/定位
 - 朗读评测使用 `difflib.SequenceMatcher` 的字符串相似度, 非 AI

@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.routers.context import get_current_user
 from app.model.models import User
 from app.services.services import hash_password, is_legacy_bcrypt_hash, verify_password
+from app.utils.templates import create_templates
 
-templates = Jinja2Templates(directory="templates")
+templates = create_templates("templates")
 router = APIRouter(prefix="", tags=["认证"])
 
 

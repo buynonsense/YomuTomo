@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YomuTomo - NHK 新闻中心</title>
+    <title>YomuTomo - 新闻中心</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="alternate icon" href="/static/favicon.ico" />
     <link rel="stylesheet" href="/static/css/main.css" />
@@ -18,37 +18,59 @@
           <div class="news-center-intro">
             <div>
               <h2>新闻中心</h2>
-              <p>浏览新闻并生成文章。</p>
+              <p>浏览 RSSHub 订阅源，先预览，再生成文章。</p>
             </div>
           </div>
 
           <div class="custom-url-panel">
             <div class="custom-url-panel__header">
-              <h3>自定义 URL</h3>
-              <p>粘贴任意你想阅读的日文网页，系统会尝试抓取并转换成文章。</p>
+              <h3>自定义订阅源预览</h3>
+              <p>粘贴 RSSHub 路由或订阅源 URL，先抓取条目预览，再选择其中一篇生成文章。</p>
             </div>
             <div class="custom-url-panel__form">
-              <input id="custom-url-input" type="url" placeholder="https://example.com/jp-article" autocomplete="off" />
+              <input id="custom-url-input" type="text" placeholder="rsshub://example/news_feed" autocomplete="off" />
               <div class="btn-loading-shell">
                 <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
                   <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
                 </svg>
                 <button type="button" id="custom-url-submit" class="btn-primary btn-with-loading-ring">
-                  <span class="btn-label">抓取并生成</span>
+                  <span class="btn-label">预览订阅源</span>
                 </button>
               </div>
             </div>
           </div>
 
+          <section id="rsshub-preview-panel" class="news-preview-panel" hidden>
+            <div class="news-preview-panel__header">
+              <div>
+                <h3>预览结果</h3>
+                <p id="rsshub-preview-meta">预览结果会显示在这里，点击条目上的按钮即可生成文章。</p>
+              </div>
+            </div>
+            <div id="rsshub-preview-grid" class="news-grid"></div>
+            <p id="rsshub-preview-empty" class="news-empty-state" hidden>暂时没有抓到可用条目，请检查订阅链接或稍后重试。</p>
+          </section>
+
           {% if news_items and news_items|length > 0 %}
             <div class="news-grid">
               {% for item in news_items %}
-                <article class="news-card" data-news-card data-news-url="{{ item.source_url }}" data-news-title="{{ item.title }}">
+                <article
+                  class="news-card"
+                  data-news-card
+                  data-news-url="{{ item.source_url }}"
+                  data-news-title="{{ item.title }}"
+                  data-news-source-url="{{ item.source_feed_url or default_news_source_url }}"
+                  data-news-published-at="{{ item.published_at or '' }}"
+                  data-crawl-endpoint="/crawl_news"
+                >
                   <div class="news-card__top">
-                    <span class="news-card__badge">NHK Easy</span>
-                    <a href="{{ item.source_url }}" target="_blank" class="btn-secondary" title="查看原文" aria-label="查看原文">原文</a>
+                    <span class="news-card__badge">RSSHub</span>
+                    <a href="{{ item.source_url | safe_href }}" target="_blank" rel="noopener noreferrer" class="btn-secondary" title="查看原文" aria-label="查看原文">原文</a>
                   </div>
                   <h3 class="news-card__title">{{ item.title }}</h3>
+                  {% if item.published_at %}
+                    <div class="news-card__time" data-news-published-at-display="{{ item.published_at }}">发布时间：</div>
+                  {% endif %}
                   {% if item.title_with_ruby %}
                     <div class="news-card__ruby">{{ item.title_with_ruby | safe }}</div>
                   {% endif %}
