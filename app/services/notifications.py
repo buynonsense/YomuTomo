@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.model.models import Notification
-from app.utils.time import utc_now
+from app.utils.time import datetime_to_isoformat, utc_now
 
 
 def _notification_payload(notification: Notification) -> dict[str, str | int | bool | None]:
@@ -16,9 +16,9 @@ def _notification_payload(notification: Notification) -> dict[str, str | int | b
         "source_task_id": notification.source_task_id,
         "source_url": notification.source_url,
         "is_read": notification.is_read,
-        "read_at": notification.read_at.isoformat() if notification.read_at else None,
-        "created_at": notification.created_at.isoformat() if notification.created_at else None,
-        "updated_at": notification.updated_at.isoformat() if notification.updated_at else None,
+        "read_at": datetime_to_isoformat(notification.read_at),
+        "created_at": datetime_to_isoformat(notification.created_at),
+        "updated_at": datetime_to_isoformat(notification.updated_at),
     }
 
 
