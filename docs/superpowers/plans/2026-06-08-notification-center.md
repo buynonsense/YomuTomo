@@ -167,7 +167,7 @@ Expected: PASS after the endpoints and service are added.
 ### Task 3: 让新闻任务写入通知
 
 **Files:**
-- Modify: `spider/nhk_spider.py:1-478`
+- Modify: `spider/rsshub_spider.py:1-478`
 - Modify: `app/routers/articles.py:370-430` if the route needs to capture and persist notification payloads
 - Test: `tests/test_api_coverage.py`
 

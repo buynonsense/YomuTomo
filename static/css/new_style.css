@@ -1125,7 +1125,7 @@ rt {
   }
 }
 
-/* NHK News Center */
+/* RSSHub News Center */
 .news-center-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1181,6 +1181,7 @@ rt {
   gap: 10px;
 }
 
+.custom-url-panel__form input[type="text"],
 .custom-url-panel__form input[type="url"] {
   flex: 1 1 320px;
   min-width: 220px;
@@ -1192,6 +1193,7 @@ rt {
   transition: var(--transition);
 }
 
+.custom-url-panel__form input[type="text"]:focus,
 .custom-url-panel__form input[type="url"]:focus {
   outline: none;
   border-color: var(--primary-color);
@@ -1200,6 +1202,36 @@ rt {
 
 .custom-url-panel__form .btn-primary {
   min-width: 140px;
+}
+
+.news-preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 6px;
+  padding: 16px 18px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(232, 245, 255, 0.78));
+  border: 1px solid rgba(33, 150, 243, 0.16);
+  box-shadow: 0 8px 20px rgba(33, 150, 243, 0.08);
+}
+
+.news-preview-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.news-preview-panel__header h3 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.news-preview-panel__header p {
+  margin: 0;
+  color: var(--text-secondary);
 }
 
 .news-limit-link.is-active {
@@ -1227,9 +1259,18 @@ rt {
   transition: var(--transition);
 }
 
+.news-card[data-news-preview-card] {
+  border-color: rgba(33, 150, 243, 0.18);
+  box-shadow: 0 6px 18px rgba(33, 150, 243, 0.08);
+}
+
 .news-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(233, 30, 99, 0.16);
+}
+
+.news-card[data-news-preview-card]:hover {
+  box-shadow: 0 10px 24px rgba(33, 150, 243, 0.16);
 }
 
 .news-card__top {
@@ -1251,11 +1292,27 @@ rt {
   font-weight: 600;
 }
 
+.news-card[data-news-preview-card] .news-card__badge {
+  background: rgba(33, 150, 243, 0.12);
+  color: #0277bd;
+}
+
 .news-card__title {
   margin: 0;
   font-size: 1.1rem;
   line-height: 1.5;
   color: var(--primary-color);
+}
+
+.news-card[data-news-preview-card] .news-card__title {
+  color: #0d47a1;
+}
+
+.news-card__time {
+  margin-top: -4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .news-card__ruby {

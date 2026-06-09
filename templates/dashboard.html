@@ -22,10 +22,10 @@
               <div class="bubble-main" data-article-id="{{ a.id }}" title="打开文章">
                 <div class="bubble-emoji">{{ a.emoji_cover or "📝" }}</div>
                 <div class="bubble-title" title="{{ a.title }}">{{ a.title }}</div>
-                <div class="bubble-meta">更新：{{ a.updated_at_beijing.strftime('%Y-%m-%d %H:%M:%S') if a.updated_at_beijing else '' }}</div>
+                <div class="bubble-meta" data-article-updated-at="{{ a.updated_at_iso or '' }}">更新：</div>
               </div>
               {% if a.source_url %}
-              <a href="{{ a.source_url }}" target="_blank" class="bubble-source-btn" title="查看原文" aria-label="查看原文">
+              <a href="{{ a.source_url | safe_href }}" target="_blank" rel="noopener noreferrer" class="bubble-source-btn" title="查看原文" aria-label="查看原文">
                 🔗
               </a>
               {% endif %}

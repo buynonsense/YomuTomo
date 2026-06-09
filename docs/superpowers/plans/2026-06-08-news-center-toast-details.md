@@ -27,13 +27,13 @@ def test_crawl_and_save_articles_marks_failed_when_no_article_created(db_session
     db_session.refresh(task)
     task_id = task.id
 
-    from spider import nhk_spider as spider_module
+    from spider import rsshub_spider as spider_module
 
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_nhk_easy_news",
-        lambda limit=12: [{"title": "新闻", "url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html", "source_url": "https://www3.nhk.or.jp/news/easy/ne2026010100001/ne2026010100001.html"}],
+        "get_feed_items",
+        lambda limit=12: [{"title": "新闻", "url": "https://example.com/news/1", "source_url": "https://example.com/news/1"}],
     )
     monkeypatch.setattr(spider_module, "get_article_content", lambda url: None)
     monkeypatch.setattr(spider_module, "get_openai_client", lambda api_key, base_url: DummySyncClient())
@@ -58,7 +58,7 @@ If the test needs a helper, keep it in `tests/test_api_coverage.py` so it exerci
 ### Task 2: 让后台任务返回明确失败原因
 
 **Files:**
-- Modify: `spider/nhk_spider.py:338-478`
+- Modify: `spider/rsshub_spider.py:338-478`
 
 - [ ] **Step 1: Implement a small result helper inside the spider module**
 

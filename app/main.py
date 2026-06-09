@@ -7,7 +7,6 @@ import time
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -88,7 +87,6 @@ app = FastAPI(
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(ExtensionCompatibilityMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
 
 
 # 路由注册
