@@ -242,6 +242,11 @@ def app_client(client: TestClient, db_session, monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(
         spider_module,
+        "fetch_feed_items",
+        lambda source_url=None, limit=12: NEWS_FIXTURE_ITEMS[:limit],
+    )
+    monkeypatch.setattr(
+        spider_module,
         "get_news_items",
         lambda source_url=None, limit=12: NEWS_FIXTURE_ITEMS[:limit],
     )
@@ -718,7 +723,7 @@ def test_crawl_news_skips_unavailable_first_article_and_keeps_trying(
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_feed_items",
+        "fetch_feed_items",
         lambda source_url=None, limit=12: [
             {
                 "title": "",
@@ -1152,6 +1157,47 @@ def test_preview_rsshub_feed_returns_items(app_client: TestClient, user_factory,
     assert payload["items"][0]["outline"] == "説明文"
 
 
+def test_preview_rsshub_feed_falls_back_to_xml_when_json_is_forbidden(
+    app_client: TestClient,
+    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
+    _login(app_client, user.email)
+
+    from spider import rsshub_spider as spider_module
+
+    xml_payload = """
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>新しいニュース</title>
+          <link>https://example.com/news/test-1</link>
+          <description>説明文</description>
+        </item>
+      </channel>
+    </rss>
+    """.strip()
+
+    def fake_get(url, headers=None, timeout=None):
+        if url == NEWS_FEED_JSON_URL:
+            return DummyResponse(status_code=403, text="Forbidden")
+        if url == "https://rsshub.app/example/news_feed":
+            return DummyResponse(status_code=200, text=xml_payload)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(spider_module.requests, "get", fake_get)
+
+    response = app_client.post("/preview_rsshub_feed", json={"source_url": NEWS_FEED_SOURCE_URL})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["count"] == 1
+    assert payload["items"][0]["title"] == "新しいニュース"
+    assert payload["items"][0]["outline"] == "説明文"
+
+
 def test_preview_rsshub_feed_rejects_non_rsshub_http_url(app_client: TestClient, user_factory):
     user = user_factory(api_key="sk-test", base_url="https://example.com/v1", model="gpt-test")
     _login(app_client, user.email)
@@ -1374,7 +1420,7 @@ def test_crawl_custom_url_uses_outline_when_content_missing(
     monkeypatch.setattr(spider_module, "get_db", lambda: iter([db_session]))
     monkeypatch.setattr(
         spider_module,
-        "get_news_items",
+        "fetch_feed_items",
         lambda source_url=None, limit=12: [
             {
                 "title": "自定义新闻标题",

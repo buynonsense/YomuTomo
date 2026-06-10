@@ -10,13 +10,14 @@ from app.model.models import Article, CrawlTask, User
 from app.services.ai_client_async import AIClientError
 from app.services.notifications import create_notification
 from app.services import rsshub_feed as rsshub_feed_module
-from app.services.rsshub_feed import fetch_rsshub_feed_items, first_item_content, normalize_rsshub_source_url
+from app.services.rsshub_feed import RSSHubFetchError, fetch_rsshub_feed_items, first_item_content, normalize_rsshub_source_url
 from app.services.services import generate_all_content, get_openai_client, log_with_time
 from app.utils.time import utc_now
 
 DEFAULT_NEWS_SOURCE_URL = settings.NEWS_CENTER_SOURCE_URL
 TASK_FAILURE_MESSAGES: dict[int, str] = {}
 requests = rsshub_feed_module.requests
+_ORIGINAL_GET_FEED_ITEMS = None
 
 
 def _normalize_selected_urls(selected_urls: Iterable[str] | None) -> list[str]:
@@ -62,10 +63,25 @@ def _build_crawl_result(success: bool, message: str, task_id: int, processed_art
     }
 
 
+def fetch_feed_items(source_url: str | None = None, limit: int = 12) -> list[dict]:
+    source = source_url or DEFAULT_NEWS_SOURCE_URL
+    current_get_feed_items = globals().get("get_feed_items")
+    if _ORIGINAL_GET_FEED_ITEMS is not None and current_get_feed_items is not _ORIGINAL_GET_FEED_ITEMS:
+        try:
+            return current_get_feed_items(source_url=source_url, limit=limit)
+        except TypeError:
+            return current_get_feed_items(source, limit=limit)
+
+    return fetch_rsshub_feed_items(source, limit=limit)
+
+
 def get_feed_items(source_url: str | None = None, limit: int = 12) -> list[dict]:
     source = source_url or DEFAULT_NEWS_SOURCE_URL
     try:
-        return fetch_rsshub_feed_items(source, limit=limit)
+        return fetch_feed_items(source, limit=limit)
+    except RSSHubFetchError as e:
+        log_with_time(f"获取 RSSHub 订阅源失败 source_url={source}: {e}")
+        return []
     except Exception as e:
         log_with_time(f"获取 RSSHub 订阅源失败 source_url={source}: {e}")
         return []
@@ -73,6 +89,9 @@ def get_feed_items(source_url: str | None = None, limit: int = 12) -> list[dict]
 
 def get_news_items(source_url: str | None = None, limit: int = 12) -> list[dict]:
     return get_feed_items(source_url, limit=limit)
+
+
+_ORIGINAL_GET_FEED_ITEMS = get_feed_items
 
 
 def resolve_feed_items(
@@ -83,7 +102,7 @@ def resolve_feed_items(
     """按 URL 过滤指定订阅源里的条目。"""
     normalized_urls = _normalize_selected_urls(selected_urls)
     feed_limit = max(limit, len(normalized_urls), 12)
-    feed_items = get_feed_items(source_url, limit=feed_limit)
+    feed_items = fetch_feed_items(source_url, limit=feed_limit)
 
     if not normalized_urls:
         return feed_items
@@ -119,6 +138,13 @@ def get_article_content(url: str | None) -> str | None:
                 return content
 
     return None
+
+
+def _format_rsshub_failure_message(exc: Exception, default_message: str) -> str:
+    if isinstance(exc, RSSHubFetchError):
+        return str(exc)
+
+    return default_message
 
 
 def generate_simplified_article(original_text, user_level, model, client):
@@ -315,9 +341,9 @@ def _crawl_feed_background(
             )
         else:
             if normalized_source and normalized_source != DEFAULT_NEWS_SOURCE_URL:
-                all_news = get_news_items(normalized_source, limit=5)
+                all_news = fetch_feed_items(normalized_source, limit=5)
             else:
-                all_news = get_feed_items(normalized_source, limit=5)
+                all_news = fetch_feed_items(normalized_source, limit=5)
 
         result = _save_articles_from_items(
             db,
@@ -330,6 +356,7 @@ def _crawl_feed_background(
         )
         return result
     except Exception as e:
+        failure_message = _format_rsshub_failure_message(e, f"新闻生成失败：{str(e)}")
         log_with_time(f"❌ 后台处理失败: {e}")
         import traceback
 
@@ -345,14 +372,14 @@ def _crawl_feed_background(
                     user_id=user_id,
                     type="news_failed",
                     title="新闻生成失败",
-                    message=f"新闻生成失败：{str(e)}",
+                    message=failure_message,
                     source_task_id=task.id,
                     source_url="/news_center",
                 )
             except Exception as notify_error:
                 log_with_time(f"❌ 写入异常失败通知失败 task_id={task.id}: {notify_error}", level="ERROR")
-            return _build_crawl_result(False, f"新闻生成失败：{str(e)}", task.id, task.processed_articles)
-        return _build_crawl_result(False, f"新闻生成失败：{str(e)}", task_id, 0)
+            return _build_crawl_result(False, failure_message, task.id, task.processed_articles)
+        return _build_crawl_result(False, failure_message, task_id, 0)
     finally:
         db.close()
 

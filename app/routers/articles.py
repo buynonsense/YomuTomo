@@ -13,7 +13,7 @@ from app.services.ai_client_async import AIClient, AIClientError
 from app.services import services as service_module
 from app.services.notifications import create_notification
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
-from app.services.rsshub_feed import fetch_rsshub_feed_items, normalize_rsshub_source_url
+from app.services.rsshub_feed import RSSHubFetchError, fetch_rsshub_feed_items, normalize_rsshub_source_url
 from app.utils.templates import create_templates
 from app.utils.time import datetime_to_isoformat, utc_now
 
@@ -174,6 +174,9 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
             "items": items,
             "count": len(items),
         }
+    except RSSHubFetchError as e:
+        log_with_time(f"❌ 预览 RSS 订阅源失败 source_url={raw_source_url}: {e}")
+        return {"success": False, "message": str(e), "items": [], "count": 0}
     except Exception as e:
         log_with_time(f"❌ 预览 RSS 订阅源失败 source_url={raw_source_url}: {e}")
         return {"success": False, "message": f"预览失败：{str(e)}", "items": [], "count": 0}
