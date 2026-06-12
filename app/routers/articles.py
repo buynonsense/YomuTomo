@@ -336,6 +336,7 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
         request,
         "reading.html",
         {
+            "user": user,
             "article_id": article.id,
             "original": article.original,
             "ruby_text": article.ruby_html,
