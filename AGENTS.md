@@ -67,6 +67,11 @@ make deploy  # 或 docker-compose -f docker-compose.prod.yml up -d
 | `FURIGANA_MODE` | `hybrid` | 注音模式: `kakasi` / `hybrid` / `ai` |
 | `DB_CONNECT_RETRIES` | `10` | 启动时 DB 连接重试次数 |
 | `DB_CONNECT_DELAY` | `3` | 重试间隔(秒) |
+| `TTS_DEVICE` | `auto` | MeloTTS 推理设备: `auto` / `cpu` / `cuda` / `mps` |
+| `TTS_DEFAULT_LANGUAGE` | `JP` | 服务端 TTS 默认语言 |
+| `TTS_DEFAULT_SPEED` | `1.0` | 服务端 TTS 默认语速 |
+| `TTS_CACHE_DIR` | `/app/static/audio_cache` | 合成 WAV 磁盘缓存根目录 |
+| `TTS_PRELOAD_ON_STARTUP` | `false` | 启动时是否预热模型（首次 /api/tts 推理 30-60s） |
 
 ## AI 配置优先级
 
@@ -95,6 +100,40 @@ make deploy  # 或 docker-compose -f docker-compose.prod.yml up -d
 - **kakasi**: 仅 pykakasi, 最快但可能不准
 - **hybrid**: (默认) kakasi 初注 → AI 校对, 推荐
 - **ai**: 完全 AI 生成, 最准确但最慢/最贵
+
+## TTS（服务端文字转语音）
+
+使用 [MeloTTS](https://github.com/myshell-ai/MeloTTS) 作为后端，浏览器不再依赖 Web Speech API（不同浏览器日语音质差异大、Chrome 限流等）。
+
+- 服务封装在 `app/services/tts.py`：`MeloTTSService` 单例 + 懒加载 + 磁盘 hash 缓存
+- 路由在 `app/routers/tts.py`：`POST /api/tts`，body `{text, speed?, language?}`，返回 `audio/wav`
+- 缓存 key = `sha1(language|speed|text)`，WAV 文件落在 `TTS_CACHE_DIR`
+- 命中缓存秒开；首次合成要 30-60s（MeloTTS 模型加载 + UniDic + checkpoint）
+- 默认不预热（避免阻塞启动）；要加速首请求可开 `TTS_PRELOAD_ON_STARTUP=true`
+- 前端 `static/js/pages/reading.js`：`fetch('/api/tts')` + `HTMLAudioElement` 播放
+  - 词高亮：没有 word boundary 事件，按 `audio.currentTime / duration × totalChars` 比例映射到 `wordRanges`
+  - 旧 `speechSynthesis` 路径、`speechSupported` 探测分支已删除
+- 构建相关：`requirements.txt` 用 `melotts @ git+https://github.com/myshell-ai/MeloTTS.git@v0.1.2`，
+  并显式 pin `torch / numpy / scipy / unidic`；`Dockerfile` 加 `git` + `python -m unidic download`
+
+### int8 动态量化（省内存 + 二次启动加速）
+
+CPU 路径上自动对 `nn.Linear` 做 int8 动态量化（`torch.quantization.quantize_dynamic`），并把量化后 state_dict 落到 `$MELOTTS_LOCAL_MODEL_DIR/int8/<lang>_int8.pt` 做 sidecar：
+
+- 首次：fp32 checkpoint 反序列化 → 量化 → 推理 → 落盘。耗时与无量化基本相同
+- 二次：`TTS(lang)` 快速构建空骨架 → `quantize_dynamic` 替换 Linear → `load_state_dict` 灌入 int8。**跳过 fp32 checkpoint load，省 25-30s**
+- 内存：MeloTTS 主体是 Conv1d，Linear 量化只覆盖少部分参数，内存下降 ~20%（1.67GB→1.30GB）
+- qengine：Mac/ARM 自动选 `qnnpack`；x86 选 `fbgemm`。两个都没有就 WARN 跳过（PyTorch 1.13 在 Mac 上 `fbgemm` 不支持，所以 `qnnpack` 兜底）
+- 量化前后会自动设置 `torch.backends.quantized.engine`，否则 `linear_prepack` 算子未注册
+- 关闭量化：删 `int8/` 目录下的 sidecar 即可（下次启动会重新生成 fp32 模型，不走量化）
+
+### MeloTTS 模型镜像
+
+MeloTTS 0.1.2 把 base speaker 的 `checkpoint.pth` / `config.json` URL 硬编码在 `melo.download_utils` 里（MyShell S3 公桶）。该公桶 2025 年开始频繁 403，Docker 镜像里我们改走 HuggingFace 镜像：
+
+- 构建期：`scripts/fetch_melotts_models.py` 走 `huggingface_hub.hf_hub_download` 拉 `myshell-ai/MeloTTS-Japanese` 的 `checkpoint.pth` + `config.json` 到 `/app/models/melotts/JP/`
+- 启动期：`app/services/tts.py` 探测到本地文件后 `monkey-patch` `melo.download_utils.DOWNLOAD_CKPT_URLS` / `DOWNLOAD_CONFIG_URLS`，把对应语言换成 `file://` 路径
+- `MELOTTS_HF_REPO_JP` / `MELOTTS_LOCAL_MODEL_DIR` 两个环境变量可覆盖镜像仓库与本地目录
 
 ## 数据库迁移
 

@@ -24,5 +24,15 @@ class Settings:
     AI_REQUEST_RETRIES = int(os.getenv("AI_REQUEST_RETRIES", "2"))
     AI_REQUEST_RETRY_DELAY_SECONDS = float(os.getenv("AI_REQUEST_RETRY_DELAY_SECONDS", "1"))
 
+    # TTS (MeloTTS) 配置
+    # device: auto | cpu | cuda | mps。auto 时 MeloTTS 自己探测
+    TTS_DEVICE = os.getenv("TTS_DEVICE", "auto")
+    TTS_DEFAULT_LANGUAGE = os.getenv("TTS_DEFAULT_LANGUAGE", "JP")
+    TTS_DEFAULT_SPEED = float(os.getenv("TTS_DEFAULT_SPEED", "1.0"))
+    # 磁盘缓存根目录；WAV 文件按 sha1(text+speed+language) 命名存放
+    TTS_CACHE_DIR = os.getenv("TTS_CACHE_DIR", "/app/static/audio_cache")
+    # 启动时是否预热模型（False 则懒加载；首次 /api/tts 请求会慢 30-60s）
+    TTS_PRELOAD_ON_STARTUP = os.getenv("TTS_PRELOAD_ON_STARTUP", "false").lower() == "true"
+
 
 settings = Settings()

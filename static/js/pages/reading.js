@@ -20,11 +20,12 @@ class ReadingPageController {
     this.lastScrolledSentenceIndex = -1;
     this.playbackSessionId = 0;
     this.vocabSpeechSessionId = 0;
-    this.currentUtterance = null;
-    this.speechSupported = 'speechSynthesis' in window;
+    // 旧 Web Speech 字段已弃用：现在所有 TTS 走 POST /api/tts + HTMLAudioElement
+    this.audio = null;
+    this.currentAudioUrl = null;
+    this.currentAbortController = null;
     this.root = document.body;
     this.wordHighlighter = null;
-    this.boundaryDrivenPlayback = false;
     this.evaluationDetailEl = null;
     this.evaluationOriginalEl = null;
     this.evaluationRecognizedEl = null;
@@ -373,11 +374,6 @@ class ReadingPageController {
   }
 
   playAllSentences() {
-    if (!this.speechSupported) {
-      this.showSpeechUnsupported();
-      return;
-    }
-
     if (!this.sentenceItems.length) {
       return;
     }
@@ -385,7 +381,7 @@ class ReadingPageController {
     this.stopSpeech();
     this.lastScrolledSentenceIndex = -1;
     this.startPlaybackSession();
-    this.speakSequence(this.playbackSessionId, 0);
+    this.playSentenceAudio(this.playbackSessionId, 0);
   }
 
   clearWordTimer() {
@@ -408,86 +404,147 @@ class ReadingPageController {
     return sessionId === this.playbackSessionId;
   }
 
-  startWordHighlight(sessionId, sentenceIndex, utterance) {
+  /**
+   * 旧的 Web Speech 词高亮逻辑已弃用：MeloTTS 服务端合成后，HTMLAudioElement 不暴露
+   * word boundary 事件，因此高亮改由 audio 的 timeupdate + 按词长按比例推进驱动。
+   * 见 startAudioWordHighlight。
+   */
+  startWordHighlight(_sessionId, _sentenceIndex, _utterance) {
+    // no-op：保留为兼容空 stub。新逻辑在 startAudioWordHighlight 中实现。
+  }
+
+  startAudioWordHighlight(sessionId, sentenceIndex) {
     const sentenceItem = this.sentenceItems[sentenceIndex];
     if (!sentenceItem || sentenceItem.wordCount <= 0) {
       this.currentWordIndex = -1;
-      this.clearWordTimer();
       this.syncSentenceHighlight();
       return;
     }
-
-    this.clearWordTimer();
     this.currentWordIndex = -1;
-    this.boundaryDrivenPlayback = false;
     this.syncSentenceHighlight();
-
-    const canUseBoundaryEvents = Boolean(utterance && typeof utterance.addEventListener === 'function');
-
-    if (canUseBoundaryEvents) {
-      utterance.addEventListener('boundary', (event) => {
-        if (!this.isActivePlayback(sessionId)) {
-          return;
-        }
-
-        if (!event || typeof event.charIndex !== 'number') {
-          return;
-        }
-
-        const wordIndex = this.wordHighlighter?.findWordIndexAtCharIndex(sentenceItem.wordRanges, event.charIndex) ?? -1;
-        if (wordIndex < 0) {
-          return;
-        }
-
-        this.boundaryDrivenPlayback = true;
-        this.clearWordTimer();
-        this.currentWordIndex = wordIndex;
-        this.syncSentenceHighlight();
-      });
-    }
-
-    if (sentenceItem.wordCount === 1) {
-      return;
-    }
-
-    this.currentWordFallbackTimer = window.setTimeout(() => {
-      if (!this.isActivePlayback(sessionId) || this.boundaryDrivenPlayback) {
-        return;
-      }
-
-      const interval = Math.max(180, Math.round(1200 / sentenceItem.wordCount));
-      let wordIndex = 0;
-      this.currentWordIndex = 0;
-      this.syncSentenceHighlight();
-
-      this.currentWordTimer = window.setInterval(() => {
-        if (!this.isActivePlayback(sessionId)) {
-          this.clearWordTimer();
-          return;
-        }
-
-        wordIndex += 1;
-        this.currentWordIndex = Math.min(wordIndex, sentenceItem.wordCount - 1);
-        this.syncSentenceHighlight();
-
-        if (wordIndex >= sentenceItem.wordCount - 1) {
-          this.clearWordTimer();
-        }
-      }, interval);
-    }, 80);
   }
 
-  stopWordHighlight() {
-    this.clearWordTimer();
-    this.currentWordIndex = -1;
-    this.boundaryDrivenPlayback = false;
-  }
-
-  speakSequence(sessionId, index) {
+  onAudioTimeUpdate(sessionId, sentenceIndex) {
     if (!this.isActivePlayback(sessionId)) {
       return;
     }
+    if (this.currentSentenceIndex !== sentenceIndex) {
+      return;
+    }
+    const audio = this.audio;
+    const sentenceItem = this.sentenceItems[sentenceIndex];
+    if (!audio || !sentenceItem || !sentenceItem.wordRanges || !sentenceItem.wordRanges.length) {
+      return;
+    }
+    const duration = audio.duration;
+    if (!duration || !Number.isFinite(duration)) {
+      return;
+    }
+    // 用 char index 比例映射 → currentTime / duration
+    const totalChars = sentenceItem.wordRanges[sentenceItem.wordRanges.length - 1].end || 1;
+    const currentChar = Math.max(0, Math.min(totalChars, (audio.currentTime / duration) * totalChars));
+    let wordIndex = this.wordHighlighter?.findWordIndexAtCharIndex(sentenceItem.wordRanges, currentChar) ?? -1;
+    if (wordIndex < 0 && currentChar >= totalChars && sentenceItem.wordCount > 0) {
+      // 末尾边界：findWordIndexAtCharIndex 对 charIndex == totalChars 返回 -1
+      // 此时强制落到最后一个 word，避免最后几个采样时高亮消失
+      wordIndex = sentenceItem.wordCount - 1;
+    }
+    if (wordIndex !== this.currentWordIndex) {
+      this.currentWordIndex = wordIndex;
+      this.syncSentenceHighlight();
+    }
+  }
 
+  stopWordHighlight() {
+    this.currentWordIndex = -1;
+  }
+
+  /**
+   * 拉取服务端 TTS WAV 并播放；命中缓存秒开，未命中要等 MeloTTS 推理（30-60s 首次）
+   * @param {number} sessionId
+   * @param {string} text
+   * @param {{speed?:number,language?:string}} options
+   * @returns {Promise<void>}
+   */
+  async fetchAndPlayAudio(sessionId, text, options = {}) {
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+    }
+    const controller = new AbortController();
+    this.currentAbortController = controller;
+
+    const body = { text };
+    if (typeof options.speed === 'number') body.speed = options.speed;
+    if (options.language) body.language = options.language;
+
+    let response;
+    try {
+      response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return;
+      }
+      console.error('TTS 请求失败', err);
+      this.showTtsError(`请求服务端 TTS 失败：${err.message || err}`);
+      this.updateTtsButtons(false);
+      return;
+    }
+
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
+    if (!response.ok) {
+      let msg = `HTTP ${response.status}`;
+      try {
+        const data = await response.json();
+        if (data && data.message) msg = data.message;
+      } catch (_) { /* ignore */ }
+      this.showTtsError(`TTS 合成失败：${msg}`);
+      this.updateTtsButtons(false);
+      return;
+    }
+
+    const blob = await response.blob();
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    this.releaseCurrentAudio();
+    this.currentAudioUrl = url;
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    this.audio = audio;
+  }
+
+  releaseCurrentAudio() {
+    if (this.audio) {
+      try {
+        this.audio.pause();
+        this.audio.src = '';
+      } catch (_) { /* ignore */ }
+      this.audio = null;
+    }
+    if (this.currentAudioUrl) {
+      URL.revokeObjectURL(this.currentAudioUrl);
+      this.currentAudioUrl = null;
+    }
+  }
+
+  /**
+   * 顺序播放多个句子：speakSequence → fetch + play，按 audio.ended 递归下一个
+   */
+  async playSentenceAudio(sessionId, index) {
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
     if (index >= this.sentenceItems.length) {
       this.currentSentenceIndex = -1;
       this.stopWordHighlight();
@@ -497,55 +554,67 @@ class ReadingPageController {
     }
 
     const sentenceItem = this.sentenceItems[index];
-    const sentence = sentenceItem.text;
     this.currentSentenceIndex = index;
     this.currentWordIndex = -1;
     this.syncSentenceHighlight();
     this.updateTtsButtons(true);
 
-    const utterance = this.createUtterance(sentence);
-    utterance.onstart = () => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
+    await this.fetchAndPlayAudio(sessionId, sentenceItem.text, { speed: 1.0 });
+    if (!this.isActivePlayback(sessionId)) {
+      return;
+    }
+    const audio = this.audio;
+    if (!audio) {
+      // fetchAndPlayAudio 已显示错误
+      return;
+    }
 
+    // 一次性绑定 ended / timeupdate / error
+    const onPlay = () => {
+      if (!this.isActivePlayback(sessionId)) return;
       this.currentSentenceIndex = index;
       this.lastScrolledSentenceIndex = -1;
-      this.startWordHighlight(sessionId, index, utterance);
+      this.startAudioWordHighlight(sessionId, index);
       this.syncSentenceHighlight();
     };
-    utterance.onend = () => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
-
-      this.stopWordHighlight();
-      this.speakSequence(sessionId, index + 1);
+    const onTime = () => this.onAudioTimeUpdate(sessionId, index);
+    const onEnd = () => {
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('ended', onEnd);
+      audio.removeEventListener('error', onError);
+      if (!this.isActivePlayback(sessionId)) return;
+      this.playSentenceAudio(sessionId, index + 1);
     };
-    utterance.onerror = (event) => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
-
-      console.error('TTS 播放失败', event.error);
-      this.stopSpeech();
+    const onError = (e) => {
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('ended', onEnd);
+      audio.removeEventListener('error', onError);
+      if (!this.isActivePlayback(sessionId)) return;
+      console.error('audio 播放错误', e);
+      this.showTtsError('音频播放失败，请重试');
+      this.updateTtsButtons(false);
     };
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('timeupdate', onTime);
+    audio.addEventListener('ended', onEnd);
+    audio.addEventListener('error', onError);
 
-    this.currentUtterance = utterance;
-    window.speechSynthesis.speak(utterance);
+    try {
+      await audio.play();
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      console.error('audio.play() 失败', err);
+      this.showTtsError(`音频播放失败：${err.message || err}`);
+      this.updateTtsButtons(false);
+    }
   }
 
-  playSentence(index) {
-    if (!this.speechSupported) {
-      this.showSpeechUnsupported();
+  async playSentence(index) {
+    if (!this.sentenceItems[index]) {
       return;
     }
-
-    const sentenceItem = this.sentenceItems[index];
-    if (!sentenceItem) {
-      return;
-    }
-
     this.stopSpeech();
     const sessionId = this.startPlaybackSession();
     this.currentSentenceIndex = index;
@@ -553,48 +622,17 @@ class ReadingPageController {
     this.lastScrolledSentenceIndex = -1;
     this.syncSentenceHighlight();
     this.updateTtsButtons(true);
-
-    const utterance = this.createUtterance(sentenceItem.text);
-    utterance.onstart = () => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
-
-      this.currentSentenceIndex = index;
-      this.lastScrolledSentenceIndex = -1;
-      this.startWordHighlight(sessionId, index, utterance);
-      this.syncSentenceHighlight();
-    };
-    utterance.onend = () => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
-
-      this.currentSentenceIndex = -1;
-      this.stopWordHighlight();
-      this.syncSentenceHighlight();
-      this.updateTtsButtons(false);
-    };
-    utterance.onerror = (event) => {
-      if (!this.isActivePlayback(sessionId)) {
-        return;
-      }
-
-      console.error('单句 TTS 播放失败', event.error);
-      this.stopSpeech();
-    };
-
-    this.currentUtterance = utterance;
-    window.speechSynthesis.speak(utterance);
+    await this.playSentenceAudio(sessionId, index);
   }
 
   stopSpeech() {
-    if (this.speechSupported) {
-      window.speechSynthesis.cancel();
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.currentAbortController = null;
     }
+    this.releaseCurrentAudio();
     this.playbackSessionId += 1;
     this.vocabSpeechSessionId += 1;
-    this.currentUtterance = null;
     this.currentSentenceIndex = -1;
     this.stopWordHighlight();
     this.lastScrolledSentenceIndex = -1;
@@ -602,13 +640,11 @@ class ReadingPageController {
     this.updateTtsButtons(false);
   }
 
-  createUtterance(text) {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ja-JP';
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    return utterance;
+  showTtsError(message) {
+    if (this.resultDiv) {
+      const safe = String(message).replace(/</g, '&lt;');
+      this.resultDiv.innerHTML = `<p style="color: var(--danger-color);">${safe}</p>`;
+    }
   }
 
   syncSentenceHighlight() {
@@ -646,18 +682,15 @@ class ReadingPageController {
     }
   }
 
+  /**
+   * 旧 Web Speech 不支持时的提示已废弃：现在 TTS 走服务端，永远可用。
+   * 保留为 no-op 以防遗留引用。
+   */
   showSpeechUnsupported() {
-    if (this.resultDiv) {
-      this.resultDiv.innerHTML = '<p style="color: var(--warning-color);">当前浏览器不支持网页语音播放。</p>';
-    }
+    // no-op
   }
 
-  speakVocabWord(button) {
-    if (!this.speechSupported) {
-      this.showSpeechUnsupported();
-      return;
-    }
-
+  async speakVocabWord(button) {
     const item = button.closest('.vocab-item');
     if (!item) {
       return;
@@ -670,25 +703,47 @@ class ReadingPageController {
       return;
     }
 
+    // 单条生词朗读复用 sentence 流程：先停掉当前，再起一个独立 session
     this.stopSpeech();
     const sessionId = ++this.vocabSpeechSessionId;
-    const utterance = this.createUtterance(text);
-    this.currentUtterance = utterance;
-    utterance.onstart = () => {
-      if (sessionId !== this.vocabSpeechSessionId) {
-        return;
-      }
+    this.playbackSessionId = sessionId; // 让 playSentenceAudio 看到这是当前 session
+    this.currentSentenceIndex = -1; // 不高亮任何句子
+    this.syncSentenceHighlight();
+    this.updateTtsButtons(true);
 
-      this.currentUtterance = utterance;
+    await this.fetchAndPlayAudio(sessionId, text, { speed: 1.0 });
+    if (!this.isActivePlayback(sessionId) || !this.audio) {
+      this.updateTtsButtons(false);
+      return;
+    }
+    const audio = this.audio;
+    const cleanup = () => {
+      audio.removeEventListener('ended', onEnd);
+      audio.removeEventListener('error', onError);
     };
-    utterance.onend = () => {
-      if (sessionId !== this.vocabSpeechSessionId) {
-        return;
-      }
+    const onEnd = () => {
+      cleanup();
+      if (!this.isActivePlayback(sessionId)) return;
+      this.updateTtsButtons(false);
+    };
+    const onError = (e) => {
+      cleanup();
+      console.error('生词 audio 播放错误', e);
+      this.showTtsError('音频播放失败，请重试');
+      this.updateTtsButtons(false);
+    };
+    audio.addEventListener('ended', onEnd);
+    audio.addEventListener('error', onError);
 
-      this.currentUtterance = null;
-    };
-    window.speechSynthesis.speak(utterance);
+    try {
+      await audio.play();
+    } catch (err) {
+      cleanup();
+      if (err && err.name === 'AbortError') return;
+      console.error('audio.play() 失败', err);
+      this.showTtsError(`音频播放失败：${err.message || err}`);
+      this.updateTtsButtons(false);
+    }
   }
 
   toggleVocabMastered(button) {

@@ -20,6 +20,7 @@ from app.routers import auth
 from app.routers import articles
 from app.routers import evaluation
 from app.routers import notifications
+from app.routers import tts as tts_router
 from app.services.notifications import create_notification
 
 
@@ -95,6 +96,7 @@ app.include_router(auth.router)
 app.include_router(articles.router)
 app.include_router(evaluation.router)
 app.include_router(notifications.router)
+app.include_router(tts_router.router)
 
 
 @app.middleware("http")
