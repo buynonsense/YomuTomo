@@ -11,7 +11,7 @@ class Settings:
 
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5432/yomu_pg")
-    RSSHUB_BASE_URL = os.getenv("RSSHUB_BASE_URL", "https://rsshub.app")
+    RSSHUB_BASE_URL = os.getenv("RSSHUB_BASE_URL", "https://rsshub.rssforever.com")
     # 默认不预置固定来源，用户可在新闻中心直接输入 RSSHub 路由或订阅链接。
     NEWS_CENTER_SOURCE_URL = os.getenv("NEWS_CENTER_SOURCE_URL", "")
 

@@ -28,7 +28,7 @@
               <p>粘贴 RSSHub 路由或订阅源 URL，先抓取条目预览，再选择其中一篇生成文章。</p>
             </div>
             <div class="custom-url-panel__form">
-              <input id="custom-url-input" type="text" placeholder="rsshub://example/news_feed" autocomplete="off" />
+              <input id="custom-url-input" type="text" placeholder="https://rsshub.rssforever.com/nhk/news_web_easy" autocomplete="off" />
               <div class="btn-loading-shell">
                 <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
                   <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
@@ -90,8 +90,6 @@
                 </article>
               {% endfor %}
             </div>
-          {% else %}
-            <p class="news-empty-state">暂时没有抓到可用新闻，请稍后刷新再试。</p>
           {% endif %}
         </section>
       </main>

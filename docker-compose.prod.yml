@@ -39,6 +39,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       SECRET_KEY: ${SECRET_KEY}
       FURIGANA_MODE: ${FURIGANA_MODE:-hybrid}
+      RSSHUB_BASE_URL: ${RSSHUB_BASE_URL:-https://rsshub.rssforever.com}
       ENVIRONMENT: production
     ports:
       - "127.0.0.1:3434:3434"

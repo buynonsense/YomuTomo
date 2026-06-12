@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.services.services import log_with_time
 from app.utils.url import normalize_http_url
 
-RSSHUB_FEED_TIMEOUT_SECONDS = 15
+RSSHUB_FEED_TIMEOUT_SECONDS = 30
 
 
 class RSSHubFetchError(RuntimeError):
@@ -111,12 +111,19 @@ def _describe_rsshub_request_error(exc: Exception, normalized_source: str) -> st
     return f"RSSHub 请求失败：{normalized_source}（{exc}）"
 
 
-def _describe_rsshub_status_error(status_code: int, normalized_source: str) -> str:
+def _describe_rsshub_status_error(
+    status_code: int,
+    normalized_source: str,
+    body_snippet: str | None = None,
+) -> str:
     if status_code == 403:
+        preview = (body_snippet or "").strip().replace("\n", " ")[:500]
+        body_hint = f"上游响应摘要：{preview}" if preview else "上游未返回可读响应体（可能是 Cloudflare 拦截页）"
         return (
-            "RSSHub 上游返回 403，"
-            "可能是公共实例限制了该路由，请检查 RSSHUB_BASE_URL 或更换可用实例："
-            f"{normalized_source}"
+            "RSSHub 公共实例已对本机 IP 返回 403。"
+            f"请更换 RSSHUB_BASE_URL（如 {settings.RSSHUB_BASE_URL}）或自部署 RSSHub。"
+            f"当前请求：{normalized_source}。"
+            f"{body_hint}"
         )
     if status_code == 404:
         return f"RSSHub 路由不存在或尚未支持：{normalized_source}"
@@ -336,7 +343,11 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
             fallback_status = getattr(fallback_response, "status_code", None)
             if isinstance(fallback_status, int) and fallback_status >= 400:
                 raise RSSHubFetchError(
-                    _describe_rsshub_status_error(fallback_status, rss_source),
+                    _describe_rsshub_status_error(
+                        fallback_status,
+                        rss_source,
+                        body_snippet=getattr(fallback_response, "text", "")[:500] or None,
+                    ),
                     source_url=source_url,
                     normalized_source_url=rss_source,
                     status_code=fallback_status,
@@ -357,7 +368,11 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
             return normalized_items
 
         raise RSSHubFetchError(
-            _describe_rsshub_status_error(status_code, normalized_source),
+            _describe_rsshub_status_error(
+                status_code,
+                normalized_source,
+                body_snippet=getattr(response, "text", "")[:200] or None,
+            ),
             source_url=source_url,
             normalized_source_url=normalized_source,
             status_code=status_code,
@@ -371,7 +386,11 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
             fallback_status = getattr(fallback_response, "status_code", None)
             if isinstance(fallback_status, int) and fallback_status >= 400:
                 raise RSSHubFetchError(
-                    _describe_rsshub_status_error(fallback_status, rss_source),
+                    _describe_rsshub_status_error(
+                        fallback_status,
+                        rss_source,
+                        body_snippet=getattr(fallback_response, "text", "")[:500] or None,
+                    ),
                     source_url=source_url,
                     normalized_source_url=rss_source,
                     status_code=fallback_status,

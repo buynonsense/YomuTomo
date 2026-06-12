@@ -37,6 +37,7 @@ services:
       # 应用配置
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-me}
       FURIGANA_MODE: ${FURIGANA_MODE:-hybrid}
+      RSSHUB_BASE_URL: ${RSSHUB_BASE_URL:-https://rsshub.rssforever.com}
     ports:
       - "8000:3434"
     networks:

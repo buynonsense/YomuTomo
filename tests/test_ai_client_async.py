@@ -6,9 +6,14 @@ import json
 import httpx
 import pytest
 
+from app.core.config import settings
 from app.services.ai_client_async import AIClientError, GeminiClient, OpenAICompatClient
 from app.services import ai_client_async
 from spider.rsshub_spider import generate_simplified_article, get_article_content
+
+
+def _expected_rsshub_json_url() -> str:
+    return f"{settings.RSSHUB_BASE_URL.rstrip('/')}/example/news_feed?format=json"
 
 
 class FakeResponse:
@@ -181,7 +186,7 @@ def test_get_article_content_returns_none_when_fetch_fails(monkeypatch):
 
 def test_get_article_content_reads_rsshub_json_feed(monkeypatch):
     source_url = "rsshub://example/news_feed"
-    feed_url = "https://rsshub.app/example/news_feed?format=json"
+    feed_url = _expected_rsshub_json_url()
 
     class Response:
         status_code = 200
@@ -219,7 +224,7 @@ def test_get_article_content_reads_rsshub_json_feed(monkeypatch):
 
 def test_get_article_content_strips_html_from_rsshub_feed(monkeypatch):
     source_url = "rsshub://example/news_feed"
-    feed_url = "https://rsshub.app/example/news_feed?format=json"
+    feed_url = _expected_rsshub_json_url()
 
     class Response:
         status_code = 200
