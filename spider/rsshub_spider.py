@@ -186,7 +186,7 @@ def _generate_article_from_item(user_id: int, user: User, item: dict, client) ->
         user_id=user_id,
         title=title,
         emoji_cover=emoji,
-        original=f"来源: {source_url}\n\n{content}",
+        original=content,
         ruby_html=ruby_text,
         translation=translation,
         vocab_json=json.dumps(vocab, ensure_ascii=False),
