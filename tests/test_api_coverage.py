@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.model.models import Article, CrawlTask, Notification, User, VocabularyEntry
 from app.routers import articles as articles_router
 from app.services.services import hash_password as real_hash_password
@@ -65,7 +66,9 @@ class FakeHtmlResponse(DummyResponse):
 
 
 NEWS_FEED_SOURCE_URL = "rsshub://example/news_feed"
-NEWS_FEED_JSON_URL = "https://rsshub.app/example/news_feed?format=json"
+NEWS_FEED_BASE_URL = settings.RSSHUB_BASE_URL.rstrip("/")
+NEWS_FEED_JSON_URL = f"{NEWS_FEED_BASE_URL}/example/news_feed?format=json"
+NEWS_FEED_XML_URL = f"{NEWS_FEED_BASE_URL}/example/news_feed"
 NEWS_ITEM_URL_1 = "https://example.com/news/1"
 NEWS_ITEM_URL_2 = "https://example.com/news/2"
 NEWS_ITEM_URL_3 = "https://example.com/news/3"
@@ -1182,7 +1185,7 @@ def test_preview_rsshub_feed_falls_back_to_xml_when_json_is_forbidden(
     def fake_get(url, headers=None, timeout=None):
         if url == NEWS_FEED_JSON_URL:
             return DummyResponse(status_code=403, text="Forbidden")
-        if url == "https://rsshub.app/example/news_feed":
+        if url == NEWS_FEED_XML_URL:
             return DummyResponse(status_code=200, text=xml_payload)
         raise AssertionError(f"unexpected url: {url}")
 
