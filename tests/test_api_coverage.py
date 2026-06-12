@@ -997,8 +997,8 @@ def test_crawl_and_save_articles_uses_outline_fallback_when_body_fetch_fails(
     assert result["message"] == "新闻生成完成，可以前往“我的文章”查看。"
     assert result["processed_articles"] == 1
     article = db_session.query(Article).filter(Article.user_id == user_id).one()
-    assert article.original.startswith(f"来源: {NEWS_FIXTURE_ITEMS[0]['url']}\n\n")
-    assert NEWS_FIXTURE_ITEMS[0]["outline"] in article.original
+    assert article.original == NEWS_FIXTURE_ITEMS[0]["outline"]
+    assert not article.original.startswith("来源")
 
 
 def test_get_feed_items_returns_empty_list_when_feed_unavailable(monkeypatch: pytest.MonkeyPatch):

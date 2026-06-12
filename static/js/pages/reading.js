@@ -357,12 +357,19 @@ class ReadingPageController {
       return [];
     }
 
-    const parts = normalized
+    // 防御性清理：历史数据里 article.original 开头可能带 "来源: <url>\n\n" 前缀
+    // 这里只 strip 行首的 "来源:" 行，避免污染句子列表
+    const stripped = normalized.replace(/^来源\s*[:：]\s*[^\n]*\n+/, '').trim();
+    if (!stripped) {
+      return [];
+    }
+
+    const parts = stripped
       .split(/(?<=[。！？!?])\s*|\n+/)
       .map((part) => part.trim())
       .filter(Boolean);
 
-    return parts.length ? parts : [normalized];
+    return parts.length ? parts : [stripped];
   }
 
   playAllSentences() {
