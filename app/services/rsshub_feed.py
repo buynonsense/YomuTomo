@@ -12,6 +12,18 @@ from app.services.services import log_with_time
 from app.utils.url import normalize_http_url
 
 RSSHUB_FEED_TIMEOUT_SECONDS = 30
+# 瞬时网络错误重试次数。RSSHub 公共实例经常中途断流（IncompleteRead / Connection
+# broken），一次失败不代表路由真的不可用，重试 1-2 次通常就能拿到完整 body
+RSSHUB_FEED_RETRY_ATTEMPTS = 3
+RSSHUB_FEED_RETRY_BACKOFF_SECONDS = 1.5
+
+
+# 哪些 requests 异常属于"瞬时"，可安全重试
+_RETRYABLE_REQUEST_EXC = (
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
 
 
 class RSSHubFetchError(RuntimeError):
@@ -104,9 +116,15 @@ def _normalize_rsshub_url(value: str, base_url: str | None = None, feed_format: 
     return _set_rsshub_format(normalized, feed_format)
 
 
-def _describe_rsshub_request_error(exc: Exception, normalized_source: str) -> str:
+def _describe_rsshub_request_error(exc: Exception, normalized_source: str, attempts: int = 1) -> str:
     if isinstance(exc, requests.Timeout):
         return f"RSSHub 请求超时，请稍后重试：{normalized_source}"
+    if isinstance(exc, requests.exceptions.ChunkedEncodingError):
+        # 上游连接中途断开（Cloudflare / 公共实例流量节流常见）
+        return (
+            f"RSSHub 上游连接中途断开（{exc}），已重试 {attempts} 次仍失败：{normalized_source}。"
+            "建议稍后重试，或更换 RSSHUB_BASE_URL / 自部署 RSSHub。"
+        )
 
     return f"RSSHub 请求失败：{normalized_source}（{exc}）"
 
@@ -326,14 +344,37 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
     }
 
     def _request_feed(url: str) -> requests.Response:
-        try:
-            return requests.get(url, headers=headers, timeout=RSSHUB_FEED_TIMEOUT_SECONDS)
-        except Exception as exc:  # requests.RequestException and timeout subclasses
-            raise RSSHubFetchError(
-                _describe_rsshub_request_error(exc, url),
-                source_url=source_url,
-                normalized_source_url=url,
-            ) from exc
+        last_exc: Exception | None = None
+        for attempt in range(1, RSSHUB_FEED_RETRY_ATTEMPTS + 1):
+            try:
+                return requests.get(url, headers=headers, timeout=RSSHUB_FEED_TIMEOUT_SECONDS)
+            except _RETRYABLE_REQUEST_EXC as exc:
+                # 瞬时错误：IncompleteRead / Connection broken / Timeout
+                # RSSHub 公共实例经常中途断流，重试 1-2 次通常能拿到完整 body
+                last_exc = exc
+                if attempt >= RSSHUB_FEED_RETRY_ATTEMPTS:
+                    break
+                log_with_time(
+                    f"[rsshub] 第 {attempt}/{RSSHUB_FEED_RETRY_ATTEMPTS} 次请求 {url} 失败（{type(exc).__name__}: {exc}），{RSSHUB_FEED_RETRY_BACKOFF_SECONDS}s 后重试",
+                    "warn",
+                )
+                import time as _t
+
+                _t.sleep(RSSHUB_FEED_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            except Exception as exc:  # 其它错误（DNS、连接拒绝等）直接抛
+                raise RSSHubFetchError(
+                    _describe_rsshub_request_error(exc, url),
+                    source_url=source_url,
+                    normalized_source_url=url,
+                ) from exc
+        # 全部重试用完仍失败
+        assert last_exc is not None
+        raise RSSHubFetchError(
+            _describe_rsshub_request_error(last_exc, url, attempts=RSSHUB_FEED_RETRY_ATTEMPTS),
+            source_url=source_url,
+            normalized_source_url=url,
+        ) from last_exc
 
     response = _request_feed(normalized_source)
     status_code = getattr(response, "status_code", None)

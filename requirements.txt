@@ -15,3 +15,20 @@ alembic
 psycopg2-binary
 requests
 beautifulsoup4
+
+# --- TTS (MeloTTS) ---
+# MeloTTS 自带 torch/numpy/scipy 等依赖；这里显式 pin 一下避免版本飘移
+# MeloTTS 0.1.2 要求 torch<2.0（见其 requirements.txt），用 1.13.1 即可
+# CPU-only wheels 从 pytorch.org/whl/cpu 拉，省掉 ~1.5GB 的 CUDA 依赖
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==1.13.1
+torchaudio==0.13.1   # 必须跟 torch 同版本；MeloTTS 没 pin，pip 默认拉最新（2.x）会要 CUDA 13
+numpy<2.0             # MeloTTS 用 librosa 0.9.1，要求 numpy<2
+scipy
+unidic
+# 注意：MeloTTS 0.1.2 的 setup.py 使用了已被 pip 22+ 删除的 pip.req.parse_requirements，
+# PEP 517 隔离构建会因为 build env 里没 pip 而失败。
+# Dockerfile 里先 pip install -r requirements.txt（不含 melotts），
+# 再 `pip install --no-build-isolation melotts @ git+https://...@v0.1.2`。
+# MeloTTS 自带的 unidic_lite 跟这里的 unidic 不冲突；MeloTTS 自带 requirements.txt
+# 里的其它依赖会通过 --no-build-isolation 自动从主 env 拿到。
