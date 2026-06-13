@@ -667,20 +667,20 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return {"error": "未登录"}
-    
+
     from app.model.models import CrawlTask
     # 获取用户最新的爬虫任务
     task = db.query(CrawlTask).filter(
         CrawlTask.user_id == user.id
     ).order_by(CrawlTask.created_at.desc()).first()
-    
+
     if not task:
         return {"status": "no_task"}
 
     from spider.rsshub_spider import TASK_FAILURE_MESSAGES
 
     message = TASK_FAILURE_MESSAGES.get(task.id)
-    
+
     payload = {
         "task_id": task.id,
         "status": task.status,
@@ -694,6 +694,66 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
         payload["message"] = message
 
     return payload
+
+
+@router.get("/crawl_queue", summary="获取当前用户的爬取队列（活跃 + 最近已完成）")
+async def get_crawl_queue(
+    request: Request,
+    db: Session = Depends(get_db),
+    recent_limit: int = Query(20, ge=1, le=50),
+):
+    """返回当前用户的爬取队列。
+
+    - active：未完成的任务（pending / processing），按 created_at 升序
+    - recent：最近 N 条已完成 / 失败的任务，按 updated_at 降序
+    - counts：当前 active 数量，用于前端判断要不要继续轮询
+    """
+    user = require_login(request, db)
+    if not user:
+        return {"error": "未登录", "active": [], "recent": [], "counts": {"active": 0}}
+
+    from app.model.models import CrawlTask
+    from spider.rsshub_spider import TASK_FAILURE_MESSAGES
+
+    def _serialize(task: CrawlTask) -> dict:
+        payload = {
+            "task_id": task.id,
+            "status": task.status,
+            "total_articles": task.total_articles,
+            "processed_articles": task.processed_articles,
+            "created_at": datetime_to_isoformat(task.created_at),
+            "updated_at": datetime_to_isoformat(task.updated_at),
+        }
+        message = TASK_FAILURE_MESSAGES.get(task.id)
+        if message:
+            payload["message"] = message
+        return payload
+
+    active = (
+        db.query(CrawlTask)
+        .filter(
+            CrawlTask.user_id == user.id,
+            CrawlTask.status.in_(("pending", "processing")),
+        )
+        .order_by(CrawlTask.created_at.asc())
+        .all()
+    )
+    recent = (
+        db.query(CrawlTask)
+        .filter(
+            CrawlTask.user_id == user.id,
+            CrawlTask.status.in_(("completed", "failed")),
+        )
+        .order_by(CrawlTask.updated_at.desc())
+        .limit(recent_limit)
+        .all()
+    )
+
+    return {
+        "active": [_serialize(t) for t in active],
+        "recent": [_serialize(t) for t in recent],
+        "counts": {"active": len(active)},
+    }
 
 
 @router.get("/get_user_level", summary="获取用户当前等级")
