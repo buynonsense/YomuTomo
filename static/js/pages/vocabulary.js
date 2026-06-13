@@ -1,3 +1,16 @@
+/**
+ * 生词复习面板 - Alpine.js 版本
+ *
+ * 状态机集中在 Alpine x-data 工厂 vocabReview()：
+ * - cards: 当前筛选结果对应的生词列表（从 #vocab-rows-data 注入）
+ * - index / flipped / isOpen: 翻牌/分页状态
+ * - 派生 frontText / backHtml / progressText / stateText / toggleLabel 走 x-text/x-html
+ *
+ * 与 htmx 互通：
+ * - 服务端 vocab-toggled 事件 → Alpine 同步卡片 mastered 状态 + 列表项 .is-mastered
+ * - 仍保留 window.openVocabReview() 兼容入口
+ */
+
 (function () {
   'use strict';
 
@@ -5,7 +18,6 @@
     if (!raw) {
       return [];
     }
-
     try {
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
@@ -30,7 +42,6 @@
     if (!firstMeaning) {
       return '';
     }
-
     return firstMeaning.textContent.replace(/^释义：/, '').trim();
   }
 
@@ -38,33 +49,22 @@
     if (!window.Utils || typeof window.Utils.formatDateTime !== 'function') {
       return '';
     }
-
     return window.Utils.formatDateTime(value);
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    const reviewEntryBtn = document.getElementById('vocab-review-entry');
-    const reviewPanel = document.getElementById('vocab-review-panel');
-    const reviewCloseBtn = document.getElementById('vocab-review-close');
-    const reviewCard = document.querySelector('[data-review-card]');
-    const reviewCardInner = reviewCard ? reviewCard.querySelector('.vocab-review-card__inner') : null;
-    const reviewWordEl = document.querySelector('.vocab-review-card__word');
-    const reviewMeaningEl = document.querySelector('.vocab-review-card__meaning');
-    const reviewProgressEl = document.querySelector('[data-review-progress]');
-    const reviewStateEl = document.querySelector('[data-review-state]');
-    const reviewPrevBtn = document.getElementById('vocab-review-prev');
-    const reviewNextBtn = document.getElementById('vocab-review-next');
-    const reviewFlipBtn = document.getElementById('vocab-review-flip');
-    const reviewToggleMasteredBtn = document.getElementById('vocab-review-toggle-mastered');
-    const reviewShuffleBtn = document.getElementById('vocab-review-shuffle');
-    const rowsDataEl = document.getElementById('vocab-rows-data');
-    const vocabItems = Array.from(document.querySelectorAll('.vocab-item'));
-
-    if (!reviewEntryBtn || !reviewPanel || !reviewCloseBtn || !reviewCard || !reviewCardInner || !reviewWordEl || !reviewMeaningEl || !reviewProgressEl || !reviewStateEl || !reviewPrevBtn || !reviewNextBtn || !reviewFlipBtn || !reviewToggleMasteredBtn || !rowsDataEl) {
-      return;
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
     }
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
 
-    const cards = parseRows(rowsDataEl.textContent)
+  function loadCardsFromDom() {
+    const rowsDataEl = document.getElementById('vocab-rows-data');
+    if (!rowsDataEl) {
+      return [];
+    }
+    return parseRows(rowsDataEl.textContent)
       .map(function (row) {
         return {
           word: typeof row.word === 'string' ? row.word : '',
@@ -77,357 +77,324 @@
       .filter(function (row) {
         return row.word.trim().length > 0;
       });
+  }
 
-    document.querySelectorAll('[data-vocab-updated-at], [data-vocab-mastered-at]').forEach(function (element) {
-      const updatedAt = element.getAttribute('data-vocab-updated-at');
-      const masteredAt = element.getAttribute('data-vocab-mastered-at');
-      const updatedText = formatTime(updatedAt);
-      const masteredText = formatTime(masteredAt);
-
-      if (updatedText && element.hasAttribute('data-vocab-updated-at')) {
-        element.textContent = '更新：' + updatedText;
-      }
-
-      if (masteredText && element.hasAttribute('data-vocab-mastered-at')) {
-        element.textContent = '掌握时间：' + masteredText;
-      }
-    });
-
-    const state = {
-      active: false,
+  // Alpine 工厂
+  window.vocabReview = function vocabReview() {
+    return {
+      isOpen: false,
       index: 0,
       flipped: false,
-      cards: cards
-    };
-    let lastFocusedElement = null;
+      cards: [],
+      lastFocusedElement: null,
+      _submitting: false,
 
-    function getCurrentCard() {
-      return state.cards[state.index] || null;
-    }
+      init() {
+        this.cards = loadCardsFromDom();
+        // 初始化展示：让 .vocab-review-panel 的 d-none 一直存在直到 isOpen = true
+        // 这里不主动 toggle className，由 x-bind:class 接管
+        this._bindTriggers();
+        this._bindHtmxVocabEvents();
+        this._formatTimeSpans();
+      },
 
-    function focusReviewCard() {
-      if (reviewCloseBtn && typeof reviewCloseBtn.focus === 'function') {
-        reviewCloseBtn.focus();
-      }
-    }
+      _bindTriggers() {
+        const entryBtn = document.getElementById('vocab-review-entry');
+        if (entryBtn) {
+          entryBtn.addEventListener('click', () => this.open());
+        }
+      },
 
-    function getReviewFocusableElements() {
-      return Array.from(
-        reviewPanel.querySelectorAll('button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')
-      ).filter(function (element) {
-        return element instanceof HTMLElement && !element.hasAttribute('disabled');
-      });
-    }
-
-    function setReviewText(card) {
-      if (!card) {
-        reviewWordEl.textContent = '当前没有可复习词条';
-        reviewMeaningEl.innerHTML = '<div class="vocab-review-card__hint">请先切换到有词条的筛选结果。</div>';
-        reviewStateEl.textContent = state.active ? '暂无可复习内容' : '未开始';
-        reviewToggleMasteredBtn.textContent = '标记已掌握';
-        return;
-      }
-
-      if (state.flipped) {
-        reviewWordEl.textContent = card.pronunciation || card.word;
-        reviewMeaningEl.innerHTML = '<div>' + escapeText(card.meaning) + '</div>' + (card.articleTitle ? '<div class="vocab-review-card__hint">来源：' + escapeText(card.articleTitle) + '</div>' : '');
-      } else {
-        reviewWordEl.textContent = card.word;
-        reviewMeaningEl.innerHTML = '<div class="vocab-review-card__hint">点击“翻牌”查看释义</div>';
-      }
-
-      reviewStateEl.textContent = card.mastered ? '已掌握' : '学习中';
-      reviewToggleMasteredBtn.textContent = card.mastered ? '取消掌握' : '标记已掌握';
-    }
-
-    function syncReviewUI() {
-      const card = getCurrentCard();
-      const total = state.cards.length;
-      const current = total > 0 ? state.index + 1 : 0;
-
-      reviewCard.dataset.flipped = state.flipped ? '1' : '0';
-      reviewCardInner.style.transform = state.flipped ? 'rotateY(180deg)' : 'rotateY(0deg)';
-      reviewProgressEl.textContent = total > 0 ? current + ' / ' + total : '0 / 0';
-      reviewPrevBtn.disabled = !state.active || state.index <= 0;
-      reviewNextBtn.disabled = !state.active || state.index >= total - 1;
-      reviewFlipBtn.disabled = !state.active || total === 0;
-      reviewToggleMasteredBtn.disabled = !state.active || !card;
-      setReviewText(card);
-    }
-
-    function findListItem(card) {
-      return vocabItems.find(function (item) {
-        return item.dataset.vocabWord === card.word && item.dataset.vocabPronunciation === card.pronunciation;
-      }) || null;
-    }
-
-    function syncListItem(card) {
-      const item = findListItem(card);
-      if (!item) {
-        return;
-      }
-
-      const toggleButton = item.querySelector('[data-vocab-action="toggle-mastered"]');
-      item.dataset.vocabMastered = card.mastered ? '1' : '0';
-      item.classList.toggle('is-mastered', card.mastered);
-      if (toggleButton) {
-        toggleButton.textContent = card.mastered ? '取消掌握' : '已掌握';
-      }
-    }
-
-    function persistStatus(card, mastered, button) {
-      if (button) {
-        button.disabled = true;
-      }
-
-      return fetch('/vocabulary/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          word: card.word,
-          pronunciation: card.pronunciation,
-          meaning: card.meaning,
-          mastered: mastered
-        })
-      })
-        .then(function (response) {
-          return response.json().then(function (data) {
-            if (!response.ok || !data.success) {
-              throw new Error(data.error || '保存失败');
-            }
-
-            return data;
-          });
-        })
-        .finally(function () {
-          if (button) {
-            button.disabled = false;
+      _formatTimeSpans() {
+        document.querySelectorAll('[data-vocab-updated-at], [data-vocab-mastered-at]').forEach((element) => {
+          const updatedAt = element.getAttribute('data-vocab-updated-at');
+          const masteredAt = element.getAttribute('data-vocab-mastered-at');
+          const updatedText = formatTime(updatedAt);
+          const masteredText = formatTime(masteredAt);
+          if (updatedText && element.hasAttribute('data-vocab-updated-at')) {
+            element.textContent = '更新：' + updatedText;
+          }
+          if (masteredText && element.hasAttribute('data-vocab-mastered-at')) {
+            element.textContent = '掌握时间：' + masteredText;
           }
         });
-    }
+      },
 
-    function updateCurrentCardMastered(mastered, button) {
-      const card = getCurrentCard();
-      if (!card) {
-        return;
-      }
-
-      persistStatus(card, mastered, button)
-        .then(function (data) {
-          card.mastered = Boolean(data.mastered);
-          syncListItem(card);
-          syncReviewUI();
-        })
-        .catch(function (error) {
-          console.error('保存生词状态失败', error);
-          alert(error.message);
+      _bindHtmxVocabEvents() {
+        document.addEventListener('vocab-toggled', (event) => {
+          const detail = (event && event.detail) || {};
+          const word = detail.word;
+          if (!word) {
+            return;
+          }
+          const mastered = !!detail.mastered;
+          // 同步 Alpine 内卡片
+          this.cards.forEach((card) => {
+            if (card.word === word) {
+              card.mastered = mastered;
+            }
+          });
+          // 同步页面内 .vocab-item
+          const selector = `.vocab-item[data-vocab-word="${cssEscape(word)}"]`;
+          document.querySelectorAll(selector).forEach((item) => {
+            item.dataset.vocabMastered = mastered ? '1' : '0';
+            item.classList.toggle('is-mastered', mastered);
+            const toggleButton = item.querySelector('[data-vocab-action="toggle-mastered"]');
+            if (toggleButton) {
+              toggleButton.textContent = mastered ? '取消掌握' : '已掌握';
+            }
+          });
         });
-    }
+      },
 
-    function toggleCurrentCardMastered(button) {
-      const card = getCurrentCard();
-      if (!card) {
-        return;
-      }
+      get totalCards() {
+        return this.cards.length;
+      },
 
-      updateCurrentCardMastered(!card.mastered, button);
-    }
+      get currentCard() {
+        return this.cards[this.index] || null;
+      },
 
-    function openReview() {
-      if (state.cards.length === 0) {
-        alert('当前筛选结果没有可复习的生词');
-        return;
-      }
+      get progressText() {
+        const total = this.totalCards;
+        const current = total > 0 ? this.index + 1 : 0;
+        return total > 0 ? current + ' / ' + total : '0 / 0';
+      },
 
-      lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : reviewEntryBtn;
-      state.active = true;
-      state.index = Math.min(state.index, state.cards.length - 1);
-      state.flipped = false;
-      reviewPanel.classList.remove('d-none');
-      reviewPanel.setAttribute('aria-hidden', 'false');
-      reviewEntryBtn.setAttribute('aria-expanded', 'true');
-      syncReviewUI();
-      focusReviewCard();
-    }
-
-    function closeReview() {
-      state.active = false;
-      state.flipped = false;
-      reviewPanel.classList.add('d-none');
-      reviewPanel.setAttribute('aria-hidden', 'true');
-      reviewEntryBtn.setAttribute('aria-expanded', 'false');
-      syncReviewUI();
-      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
-        lastFocusedElement.focus();
-      } else {
-        reviewEntryBtn.focus();
-      }
-    }
-
-    function flipCurrentCard() {
-      if (!state.active || state.cards.length === 0) {
-        return;
-      }
-
-      state.flipped = !state.flipped;
-      syncReviewUI();
-    }
-
-    function moveCurrentCard(step) {
-      if (!state.active || state.cards.length === 0) {
-        return;
-      }
-
-      const nextIndex = state.index + step;
-      if (nextIndex < 0 || nextIndex >= state.cards.length) {
-        return;
-      }
-
-      state.index = nextIndex;
-      state.flipped = false;
-      syncReviewUI();
-    }
-
-    function shuffleCards() {
-      for (let i = state.cards.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [state.cards[i], state.cards[j]] = [state.cards[j], state.cards[i]];
-      }
-      state.index = 0;
-      state.flipped = false;
-      syncReviewUI();
-    }
-
-    function speakVocabWord(button) {
-      const item = button.closest('.vocab-item');
-      if (!item || !('speechSynthesis' in window)) {
-        return;
-      }
-
-      const text = item.dataset.vocabPronunciation || item.dataset.vocabWord || '';
-      if (!text.trim()) {
-        return;
-      }
-
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ja-JP';
-      window.speechSynthesis.speak(utterance);
-    }
-
-    function toggleListMastered(button) {
-      const item = button.closest('.vocab-item');
-      if (!item) {
-        return;
-      }
-
-      const card = state.cards.find(function (entry) {
-        return entry.word === (item.dataset.vocabWord || '') && entry.pronunciation === (item.dataset.vocabPronunciation || '');
-      });
-
-      if (!card) {
-        return;
-      }
-
-      const meaning = getMeaningText(item) || card.meaning;
-      const nextMastered = item.dataset.vocabMastered !== '1';
-
-      persistStatus({
-        word: card.word,
-        pronunciation: card.pronunciation,
-        meaning: meaning
-      }, nextMastered, button)
-        .then(function (data) {
-          card.mastered = Boolean(data.mastered);
-          syncListItem(card);
-          syncReviewUI();
-        })
-        .catch(function (error) {
-          console.error('保存生词状态失败', error);
-          alert(error.message);
-        });
-    }
-
-    reviewEntryBtn.addEventListener('click', openReview);
-    reviewCloseBtn.addEventListener('click', closeReview);
-    reviewFlipBtn.addEventListener('click', flipCurrentCard);
-    if (reviewShuffleBtn) {
-      reviewShuffleBtn.addEventListener('click', function () {
-        shuffleCards();
-      });
-    }
-    reviewPrevBtn.addEventListener('click', function () {
-      moveCurrentCard(-1);
-    });
-    reviewNextBtn.addEventListener('click', function () {
-      moveCurrentCard(1);
-    });
-    reviewToggleMasteredBtn.addEventListener('click', function () {
-      const card = getCurrentCard();
-      if (!card) {
-        return;
-      }
-
-      updateCurrentCardMastered(!card.mastered, reviewToggleMasteredBtn);
-    });
-
-    reviewPanel.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeReview();
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const focusableElements = getReviewFocusableElements();
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-
-      const currentIndex = focusableElements.indexOf(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey) {
-        if (document.activeElement === firstElement || currentIndex <= 0) {
-          event.preventDefault();
-          lastElement.focus();
+      get stateText() {
+        const card = this.currentCard;
+        if (!card) {
+          return this.isOpen ? '暂无可复习内容' : '未开始';
         }
-        return;
-      }
+        return card.mastered ? '已掌握' : '学习中';
+      },
 
-      if (document.activeElement === lastElement || currentIndex === focusableElements.length - 1) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    });
+      get toggleLabel() {
+        const card = this.currentCard;
+        if (!card) {
+          return '标记已掌握';
+        }
+        return card.mastered ? '取消掌握' : '标记已掌握';
+      },
 
-    document.addEventListener('click', function (event) {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
+      get frontText() {
+        const card = this.currentCard;
+        if (!card) {
+          return '当前没有可复习词条';
+        }
+        if (this.flipped) {
+          return card.pronunciation || card.word;
+        }
+        return card.word;
+      },
 
-      const button = target.closest('[data-vocab-action]');
-      if (!button) {
-        return;
-      }
+      get backHtml() {
+        const card = this.currentCard;
+        if (!card) {
+          return '<div class="vocab-review-card__hint">请先切换到有词条的筛选结果。</div>';
+        }
+        if (!this.flipped) {
+          return '<div class="vocab-review-card__hint">点击“翻牌”查看释义</div>';
+        }
+        const meaning = '<div>' + escapeText(card.meaning) + '</div>';
+        const hint = card.articleTitle
+          ? '<div class="vocab-review-card__hint">来源：' + escapeText(card.articleTitle) + '</div>'
+          : '';
+        return meaning + hint;
+      },
 
-      const action = button.getAttribute('data-vocab-action');
-      if (action === 'speak') {
-        speakVocabWord(button);
-        return;
-      }
+      // 让 d-none 与 isOpen 联动：使用 $watch 风格无法直接在 template 里绑 className 表达式
+      // 这里用一个派生属性返回 class 字符串
+      get panelClass() {
+        return this.isOpen ? 'vocab-review-panel' : 'vocab-review-panel d-none';
+      },
 
-      if (action === 'toggle-mastered') {
-        toggleListMastered(button);
-      }
-    });
+      open() {
+        if (this.totalCards === 0) {
+          alert('当前筛选结果没有可复习的生词');
+          return;
+        }
+        const active = document.activeElement;
+        this.lastFocusedElement = active instanceof HTMLElement ? active : null;
+        this.isOpen = true;
+        this.index = Math.min(this.index, this.totalCards - 1);
+        this.flipped = false;
+        const closeBtn = document.getElementById('vocab-review-close');
+        if (closeBtn && typeof closeBtn.focus === 'function') {
+          closeBtn.focus();
+        }
+      },
 
-    syncReviewUI();
+      close() {
+        if (!this.isOpen) {
+          return;
+        }
+        this.isOpen = false;
+        this.flipped = false;
+        if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
+          this.lastFocusedElement.focus();
+        }
+      },
+
+      flip() {
+        if (!this.isOpen || this.totalCards === 0) {
+          return;
+        }
+        this.flipped = !this.flipped;
+      },
+
+      move(step) {
+        if (!this.isOpen || this.totalCards === 0) {
+          return;
+        }
+        const nextIndex = this.index + step;
+        if (nextIndex < 0 || nextIndex >= this.totalCards) {
+          return;
+        }
+        this.index = nextIndex;
+        this.flipped = false;
+      },
+
+      shuffle() {
+        for (let i = this.cards.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const a = this.cards[i];
+          const b = this.cards[j];
+          this.cards[i] = b;
+          this.cards[j] = a;
+        }
+        this.index = 0;
+        this.flipped = false;
+      },
+
+      _persistStatus(card, mastered, button) {
+        if (button) {
+          button.disabled = true;
+        }
+        this._submitting = true;
+        return fetch('/vocabulary/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            word: card.word,
+            pronunciation: card.pronunciation,
+            meaning: card.meaning,
+            mastered: mastered
+          })
+        })
+          .then(function (response) {
+            return response.json().then(function (data) {
+              if (!response.ok || !data.success) {
+                throw new Error(data.error || '保存失败');
+              }
+              return data;
+            });
+          })
+          .finally(() => {
+            this._submitting = false;
+            if (button) {
+              button.disabled = false;
+            }
+          });
+      },
+
+      toggleMastered(button) {
+        const card = this.currentCard;
+        if (!card) {
+          return;
+        }
+        this._persistStatus(card, !card.mastered, button)
+          .then((data) => {
+            card.mastered = Boolean(data.mastered);
+            // 列表项同步
+            const selector = `.vocab-item[data-vocab-word="${cssEscape(card.word)}"]`;
+            document.querySelectorAll(selector).forEach((item) => {
+              item.dataset.vocabMastered = card.mastered ? '1' : '0';
+              item.classList.toggle('is-mastered', card.mastered);
+              const toggleButton = item.querySelector('[data-vocab-action="toggle-mastered"]');
+              if (toggleButton) {
+                toggleButton.textContent = card.mastered ? '取消掌握' : '已掌握';
+              }
+            });
+          })
+          .catch((error) => {
+            console.error('保存生词状态失败', error);
+            alert(error.message);
+          });
+      },
+
+      speakVocabWord(button) {
+        const item = button.closest('.vocab-item');
+        if (!item || !('speechSynthesis' in window)) {
+          return;
+        }
+        const text = item.dataset.vocabPronunciation || item.dataset.vocabWord || '';
+        if (!text.trim()) {
+          return;
+        }
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        window.speechSynthesis.speak(utterance);
+      },
+
+      // 处理 tab 键焦点循环
+      trapFocus(event) {
+        const panel = event.currentTarget;
+        if (!panel) {
+          return;
+        }
+        const focusable = Array.from(
+          panel.querySelectorAll('button:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')
+        ).filter((element) => element instanceof HTMLElement && !element.hasAttribute('disabled'));
+        if (focusable.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const firstEl = focusable[0];
+        const lastEl = focusable[focusable.length - 1];
+        const idx = focusable.indexOf(active);
+        if (event.shiftKey) {
+          if (active === firstEl || idx <= 0) {
+            event.preventDefault();
+            lastEl.focus();
+          }
+          return;
+        }
+        if (active === lastEl || idx === focusable.length - 1) {
+          event.preventDefault();
+          firstEl.focus();
+        }
+      },
+    };
+  };
+
+  // 老的 window.openVocabReview() 入口
+  function findAlpineInstance() {
+    const panelEl = document.getElementById('vocab-review-panel');
+    if (panelEl && panelEl._x_dataStack && panelEl._x_dataStack[0]) {
+      return panelEl._x_dataStack[0];
+    }
+    return null;
+  }
+
+  function openVocabReview() {
+    const instance = findAlpineInstance();
+    if (instance) {
+      instance.open();
+    }
+  }
+
+  function closeVocabReview() {
+    const instance = findAlpineInstance();
+    if (instance) {
+      instance.close();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    window.openVocabReview = openVocabReview;
+    window.closeVocabReview = closeVocabReview;
   });
 })();

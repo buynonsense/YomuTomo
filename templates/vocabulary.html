@@ -28,41 +28,62 @@
             </div>
           </div>
 
-          <section id="vocab-review-panel" class="vocab-review-panel d-none" aria-hidden="true" aria-modal="true" role="dialog" tabindex="-1">
+          <section id="vocab-review-panel"
+                   class="vocab-review-panel"
+                   x-bind:class="panelClass"
+                   aria-hidden="true"
+                   aria-modal="true"
+                   role="dialog"
+                   tabindex="-1"
+                   x-data="vocabReview()"
+                   x-bind:aria-hidden="!isOpen"
+                   x-on:keydown.escape="if (isOpen) close()"
+                   x-on:keydown.tab.prevent="trapFocus($event)">
             <div class="vocab-review-panel__header">
               <div>
                 <h3>复习模式</h3>
                 <p>翻牌复习、逐条切换、标记掌握状态都已接入。</p>
               </div>
-              <button type="button" class="btn-secondary" id="vocab-review-close">关闭</button>
+              <button type="button" class="btn-secondary" id="vocab-review-close" x-on:click="close()">关闭</button>
             </div>
 
             <div class="vocab-review-panel__body">
-              <div class="vocab-review-card" data-review-card data-flipped="0">
+              <div class="vocab-review-card"
+                   data-review-card
+                   x-bind:data-flipped="flipped ? '1' : '0'">
                 <div class="vocab-review-card__inner">
                   <div class="vocab-review-card__face vocab-review-card__face--front">
                     <div class="vocab-review-card__label">词条</div>
-                    <div class="vocab-review-card__word">等待进入复习</div>
-                    <div class="vocab-review-card__hint">点击后续会切换到释义面</div>
+                    <div class="vocab-review-card__word" x-text="frontText">等待进入复习</div>
+                    <div class="vocab-review-card__hint">点击“翻牌”查看释义</div>
                   </div>
                   <div class="vocab-review-card__face vocab-review-card__face--back">
                     <div class="vocab-review-card__label">释义</div>
-                    <div class="vocab-review-card__meaning">复习面板骨架已就绪</div>
+                    <div class="vocab-review-card__meaning" x-html="backHtml">复习面板骨架已就绪</div>
                   </div>
                 </div>
               </div>
 
               <div class="vocab-review-panel__controls">
-                <button type="button" class="btn-secondary" id="vocab-review-prev" disabled>上一张</button>
-                <button type="button" class="btn-secondary" id="vocab-review-flip">翻牌</button>
-                <button type="button" class="btn-secondary" id="vocab-review-next" disabled>下一张</button>
-                <button type="button" class="btn-secondary" id="vocab-review-shuffle">随机开始</button>
-                <button type="button" class="btn-secondary" id="vocab-review-toggle-mastered">标记已掌握</button>
+                <button type="button" class="btn-secondary" id="vocab-review-prev"
+                        x-on:click="move(-1)"
+                        x-bind:disabled="!isOpen || index <= 0">上一张</button>
+                <button type="button" class="btn-secondary" id="vocab-review-flip"
+                        x-on:click="flip()"
+                        x-bind:disabled="!isOpen || totalCards === 0">翻牌</button>
+                <button type="button" class="btn-secondary" id="vocab-review-next"
+                        x-on:click="move(1)"
+                        x-bind:disabled="!isOpen || index >= totalCards - 1">下一张</button>
+                <button type="button" class="btn-secondary" id="vocab-review-shuffle" x-on:click="shuffle()">随机开始</button>
+                <button type="button" class="btn-secondary" id="vocab-review-toggle-mastered"
+                        x-on:click="toggleMastered()"
+                        x-bind:disabled="!isOpen || !currentCard"
+                        x-text="toggleLabel">标记已掌握</button>
               </div>
 
             <div class="vocab-review-panel__meta">
-                <span>进度：<strong data-review-progress>0 / 0</strong></span>
-                <span>当前状态：<strong data-review-state>未开始</strong></span>
+                <span>进度：<strong x-text="progressText">0 / 0</strong></span>
+                <span>当前状态：<strong x-text="stateText">未开始</strong></span>
               </div>
             </div>
           </section>
