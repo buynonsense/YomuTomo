@@ -40,6 +40,21 @@ class ExtensionCompatibilityMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class HtmxRequestMiddleware(BaseHTTPMiddleware):
+    """识别 htmx 请求，把 flag 挂到 request.state 上方便 handler 区分响应形态。"""
+
+    async def dispatch(self, request, call_next):
+        # htmx 默认在所有 ajax 请求上设置 HX-Request: true
+        # https://htmx.org/reference/#request_headers
+        request.state.htmx = request.headers.get('HX-Request', '').lower() == 'true'
+        # 透传一些常用的 htmx 头，便于端点做更细粒度控制
+        request.state.htmx_target = request.headers.get('HX-Target', '')
+        request.state.htmx_trigger = request.headers.get('HX-Trigger', '')
+        request.state.htmx_trigger_name = request.headers.get('HX-Trigger-Name', '')
+        request.state.htmx_current_url = request.headers.get('HX-Current-URL', '')
+        return await call_next(request)
+
+
 tags_metadata = [
     {"name": "主页", "description": "首页与静态页面相关接口。"},
     {"name": "认证", "description": "用户注册、登录、退出登录。"},
@@ -86,6 +101,7 @@ app = FastAPI(
 
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(HtmxRequestMiddleware)
 app.add_middleware(ExtensionCompatibilityMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
