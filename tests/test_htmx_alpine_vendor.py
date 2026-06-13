@@ -367,13 +367,15 @@ def test_ai_config_feedback_partial_has_success_and_error_branches():
 
 
 def test_settings_modal_js_no_longer_binds_click_save_ai_config():
-    """Stage 3a: save-config 不再绑 saveAiConfig，改为 type=submit + htmx 自提交。"""
+    """Stage 3a + Stage 4a: save-config 走 type=submit + htmx 自提交，由模板直接定义。"""
     js = (REPO_ROOT / "static" / "js" / "modules" / "settings-modal.js").read_text(encoding="utf-8")
+    template = (REPO_ROOT / "templates" / "partials" / "global_settings_modal.html").read_text(encoding="utf-8")
     # 旧的 click→saveAiConfig 链路已删除
     assert "saveConfigBtn.addEventListener('click', saveAiConfig)" not in js
     assert "async function saveAiConfig" not in js
-    # 新链路：提交按钮 type=submit，由 htmx 接管
-    assert "setAttribute('type', 'submit')" in js
+    # 新链路：模板里 save-config 按钮 type=submit，由 htmx 接管
+    assert 'id="save-config"' in template
+    assert 'type="submit"' in template
     # 业务反馈走 HX-Trigger 派发的 ai-config-saved / ai-config-failed 事件
     assert "'ai-config-saved'" in js
     assert "'ai-config-failed'" in js
@@ -1125,4 +1127,62 @@ def test_article_rename_blank_title_does_not_change_row(client, db_session, monk
     trigger = _json.loads(resp.headers["hx-trigger"])
     # 事件里带的 title 仍是原标题，前端无需回滚
     assert trigger["article-renamed"]["title"] == "保留"
+
+
+# ---------------------------------------------------------------------------
+# Stage 4a: 设置弹窗改 Alpine 局部状态机
+# ---------------------------------------------------------------------------
+
+
+def test_settings_modal_uses_alpine_x_data():
+    """Stage 4a: 设置弹窗模板用 Alpine x-data 接管状态。"""
+    template = (REPO_ROOT / "templates" / "partials" / "global_settings_modal.html").read_text(encoding="utf-8")
+    assert 'x-data="settingsModal()"' in template
+    # 弹窗/面板显隐交给 x-show，不再依赖 .modal.show 切换
+    assert 'x-show="isOpen"' in template
+    # 切换 tab 走 x-on:click → switchTab
+    assert 'x-on:click="switchTab(\'ai\')"' in template
+    assert 'x-on:click="switchTab(\'user\')"' in template
+    # 关闭按钮直接调 Alpine 方法
+    assert 'x-on:click="close()"' in template
+    # 活动 tab class 绑定到 activeTab
+    assert "activeTab === 'ai'" in template
+    assert "activeTab === 'user'" in template
+
+
+def test_settings_modal_js_exposes_alpine_factory():
+    """Stage 4a: settings-modal.js 注册 window.settingsModal 工厂。"""
+    js = (REPO_ROOT / "static" / "js" / "modules" / "settings-modal.js").read_text(encoding="utf-8")
+    assert "window.settingsModal" in js
+    # 工厂方法齐全
+    assert "open(tabName)" in js
+    assert "close()" in js
+    assert "switchTab(tabName)" in js
+    assert "saveUserSettings()" in js
+    # 仍保留老的 window.openSettingsModal 入口做兼容
+    assert "window.openSettingsModal" in js
+    assert "window.closeSettingsModal" in js
+    # 业务反馈事件没丢
+    assert "ai-config-saved" in js
+    assert "ai-config-failed" in js
+
+
+def test_settings_modal_alpine_state_has_expected_fields():
+    """Stage 4a: Alpine 工厂暴露的反应式字段名稳定。"""
+    js = (REPO_ROOT / "static" / "js" / "modules" / "settings-modal.js").read_text(encoding="utf-8")
+    # 工厂返回的对象字段
+    assert "isOpen: false" in js
+    assert "activeTab: 'ai'" in js
+    assert "isSubmitting: false" in js
+
+
+def test_settings_modal_drops_legacy_imperative_state():
+    """Stage 4a: 旧版模块级闭包变量已删除。"""
+    js = (REPO_ROOT / "static" / "js" / "modules" / "settings-modal.js").read_text(encoding="utf-8")
+    # 旧版的闭包状态不再出现
+    assert "let settingsModalOpen = false" not in js
+    assert "let closingTimer = null" not in js
+    assert "let outsideClickHandler = null" not in js
+    # 旧的 setActiveTab 顶层函数也消失了
+    assert "function setActiveTab" not in js
 
