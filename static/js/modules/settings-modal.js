@@ -186,81 +186,70 @@
     }, 350);
   }
 
-  async function saveAiConfig() {
+  function showToast(message, type) {
+    if (typeof window.showToast === 'function') {
+      window.showToast(message, type);
+      return;
+    }
+    // 兜底：直接 console 输出，避免静默失败
+    if (type === 'error') {
+      console.error(message);
+    } else {
+      console.log(message);
+    }
+  }
+
+  function syncHiddenModel(model) {
+    try {
+      const hiddenModel = document.getElementById('model');
+      if (hiddenModel) {
+        hiddenModel.value = model || '';
+      }
+      sessionStorage.setItem('processing_model', model || '');
+    } catch (error) {
+      console.error('更新隐藏模型失败:', error);
+    }
+  }
+
+  function updateStatusAfterSave(success, modelOrError) {
     const manager = getAiConfigManager();
-    const { apiKeyInput, baseUrlInput, modelInput, saveConfigBtn } = getModalElements();
-
-    if (!manager || !apiKeyInput || !baseUrlInput || !modelInput || !saveConfigBtn) {
+    const { statusIcon, statusText, statusDiv } = getModalElements();
+    if (!manager || !statusIcon || !statusText) {
       return;
     }
-
-    const apiKey = apiKeyInput.value.trim();
-    const baseUrl = baseUrlInput.value.trim();
-    const model = modelInput.value.trim();
-
-    if (!apiKey) {
-      showToast('请输入API Key', 'warning');
-      return;
+    manager.updateStatus(success, success ? modelOrError : '');
+    if (statusDiv) {
+      statusDiv.classList.toggle('error', !success);
     }
+  }
 
-    try {
-      if (baseUrl && baseUrl.includes('generativelanguage.googleapis.com') && !model) {
-        showToast('Google Generative Language 需要填写模型名（例如 gemini-2.5-flash）', 'warning');
-        return;
-      }
-    } catch (error) {
-      console.error('校验 AI 配置失败:', error);
-    }
+  // htmx 表单提交完成后，HX-Trigger 头里会带 ai-config-saved / ai-config-failed。
+  // 这里负责 toast、关弹窗、状态徽标同步、隐藏模型同步。
+  function handleAiConfigSaveEvent(event) {
+    const detail = event && event.detail ? event.detail : {};
+    const message = detail.message || '';
+    const succeeded = !!(event.detail && event.detail.succeeded);
 
-    const config = {
-      apiKey,
-      baseUrl,
-      model,
-      timestamp: Date.now()
-    };
-
-    manager.saveConfig(config);
-
-    const originalText = saveConfigBtn.innerHTML;
-    saveConfigBtn.innerHTML = '⏳ 测试中...';
-    saveConfigBtn.disabled = true;
-
-    try {
-      const testResult = await manager.testConfig(config);
-      if (!testResult.success) {
-        manager.updateStatus(false, testResult.error || '测试失败');
-        showToast(`保存失败：${testResult.error || '测试失败'}`, 'error');
-        return;
-      }
-
-      const saveResult = await manager.saveToDatabase(config);
-      if (!saveResult.success) {
-        manager.updateStatus(false, saveResult.message || '保存失败');
-        showToast(`保存失败：${saveResult.message || '未知错误'}`, 'error');
-        return;
-      }
-
-      manager.updateStatus(true, config.model || '默认模型');
-      try {
-        const hiddenModel = document.getElementById('model');
-        if (hiddenModel) {
-          hiddenModel.value = config.model || '';
-        }
-        sessionStorage.setItem('processing_model', config.model || '');
-      } catch (error) {
-        console.error('更新隐藏模型失败:', error);
-      }
-
-      showToast('AI 配置保存成功！', 'success');
+    if (succeeded) {
+      const modelInput = document.getElementById('modal-model');
+      syncHiddenModel(modelInput ? modelInput.value : '');
+      updateStatusAfterSave(true, modelInput ? modelInput.value : '');
+      showToast(message || 'AI 配置已保存', 'success');
       setTimeout(closeSettingsModal, 900);
-    } catch (error) {
-      console.error('AI 配置保存失败:', error);
-      manager.updateStatus(false, '测试失败');
-      showToast('测试失败，请检查配置', 'error');
-    } finally {
-      saveConfigBtn.innerHTML = originalText;
-      saveConfigBtn.disabled = false;
+    } else {
+      updateStatusAfterSave(false, message);
+      showToast(`保存失败：${message || '未知错误'}`, 'error');
     }
+  }
+
+  function attachHtmxListeners() {
+    // htmx 会把 HX-Trigger 派发为同名 DOM 事件，事件 detail 来自服务端 json
+    document.addEventListener('ai-config-saved', function (event) {
+      handleAiConfigSaveEvent({ detail: Object.assign({ succeeded: true }, event.detail || {}) });
+    });
+    document.addEventListener('ai-config-failed', function (event) {
+      handleAiConfigSaveEvent({ detail: Object.assign({ succeeded: false }, event.detail || {}) });
+    });
   }
 
   async function saveUserSettings() {
@@ -349,7 +338,10 @@
     }
 
     if (saveConfigBtn) {
-      saveConfigBtn.addEventListener('click', saveAiConfig);
+      // Stage 3a: AI 配置改用 htmx <form hx-post> 自提交，不再走 saveAiConfig()。
+      // 按钮本身是 type="submit"，htmx 会负责 fetch + 响应片段 swap。
+      // 业务反馈（toast / 关弹窗 / 状态徽标）由 document 级 ai-config-* 事件处理。
+      saveConfigBtn.setAttribute('type', 'submit');
     }
 
     if (saveSettingsBtn) {
@@ -394,6 +386,7 @@
     }
 
     bindEvents();
+    attachHtmxListeners();
 
     window.openSettingsModal = openSettingsModal;
     window.closeSettingsModal = closeSettingsModal;

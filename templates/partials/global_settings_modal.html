@@ -24,25 +24,33 @@
           </div>
         </div>
 
-        <div class="settings-form-grid">
-          <div class="input-group">
-            <input type="text" id="modal-api-key" autocomplete="off" />
-            <label for="modal-api-key">API Key</label>
+        <form id="ai-config-form"
+              hx-post="/save_ai_config"
+              hx-swap="innerHTML"
+              hx-target="#ai-config-feedback">
+          <div class="settings-form-grid">
+            <div class="input-group">
+              <input type="text" id="modal-api-key" name="openai_api_key" autocomplete="off" required />
+              <label for="modal-api-key">API Key</label>
+            </div>
+            <div class="input-group">
+              <input type="text" id="modal-base-url" name="openai_base_url" autocomplete="off" />
+              <label for="modal-base-url">Base URL</label>
+            </div>
+            <div class="input-group">
+              <input type="text" id="modal-model" name="openai_model" autocomplete="off" />
+              <label for="modal-model">AI模型 (可自定义)</label>
+            </div>
           </div>
-          <div class="input-group">
-            <input type="text" id="modal-base-url" autocomplete="off" />
-            <label for="modal-base-url">Base URL</label>
-          </div>
-          <div class="input-group">
-            <input type="text" id="modal-model" autocomplete="off" />
-            <label for="modal-model">AI模型 (可自定义)</label>
-          </div>
-        </div>
 
-        <div class="settings-panel__footer">
-          <button id="save-config" class="btn-primary" type="button">测试并保存</button>
-          <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
-        </div>
+          <div class="settings-panel__footer">
+            <button type="submit" id="save-config" class="btn-primary">测试并保存</button>
+            <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
+          </div>
+
+          {# htmx 把响应片段 swap 进这里。HX-Trigger 事件：ai-config-saved / ai-config-failed #}
+          <div id="ai-config-feedback" class="ai-config-feedback" aria-live="polite"></div>
+        </form>
       </section>
 
       <section id="settings-panel-user" class="settings-panel" data-settings-panel="user" role="tabpanel" aria-labelledby="settings-tab-user" hidden>

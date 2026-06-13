@@ -1,0 +1,16 @@
+{# htmx 片段：AI 配置保存后的反馈区域。
+
+服务端的 HX-Trigger 头会派发 ai-config-saved 或 ai-config-failed 事件，
+前端 window.handleAiConfigSave 监听后负责 toast / 关闭弹窗 / 更新状态徽标。
+#}
+{% if success %}
+  <div class="ai-config-feedback__inner is-success" role="status">
+    <span class="ai-config-feedback__icon">✅</span>
+    <span class="ai-config-feedback__text">AI 配置已保存成功</span>
+  </div>
+{% else %}
+  <div class="ai-config-feedback__inner is-error" role="alert">
+    <span class="ai-config-feedback__icon">⚠️</span>
+    <span class="ai-config-feedback__text">{{ message or "AI 配置保存失败" }}</span>
+  </div>
+{% endif %}
