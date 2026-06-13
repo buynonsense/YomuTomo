@@ -39,6 +39,10 @@ def _load_app_package() -> None:
 
 _load_app_package()
 
+# e2e tests live under tests/e2e and require playwright + a real uvicorn server.
+# They are opt-in via pointing pytest at tests/e2e directly (see tests/e2e/conftest.py).
+collect_ignore_glob = ['e2e/*']
+
 
 @pytest.fixture()
 def test_engine(monkeypatch: pytest.MonkeyPatch):
