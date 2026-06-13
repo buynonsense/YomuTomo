@@ -1431,6 +1431,48 @@ rt {
   padding-left: 40px;
 }
 
+/* TTS 预加载进度条 */
+.tts-preload-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(33, 150, 243, 0.08);
+  border: 1px solid rgba(33, 150, 243, 0.18);
+}
+
+.tts-preload-progress__bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(33, 150, 243, 0.15);
+  overflow: hidden;
+}
+
+.tts-preload-progress__fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #42a5f5, #1e88e5);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.tts-preload-progress__text {
+  flex: 0 0 auto;
+  min-width: 180px;
+  font-size: 0.85rem;
+  color: #1e88e5;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+#tts-preload-btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* 底部选中工具栏 */
 .news-selection-toolbar {
   position: sticky;
