@@ -51,16 +51,20 @@
             <p id="rsshub-preview-empty" class="news-empty-state" hidden>暂时没有抓到可用条目，请检查订阅链接或稍后重试。</p>
           </section>
 
-          <section id="crawl-queue-panel" class="crawl-queue-panel" hidden>
+          {# htmx 自加载：初次 load delay 200ms，之后每 2s 轮询；section 本身就是 htmx swap target。 #}
+          <section id="crawl-queue-panel"
+                   class="crawl-queue-panel"
+                   hx-get="/crawl_queue/partial"
+                   hx-trigger="load delay:200ms, every 2s"
+                   hx-swap="outerHTML"
+                   hidden>
             <div class="crawl-queue-panel__header">
               <div>
                 <h3>爬取队列</h3>
-                <p id="crawl-queue-meta">实时显示所有进行中和最近完成的任务。</p>
+                <p class="crawl-queue-meta">实时显示所有进行中和最近完成的任务。</p>
               </div>
-              <span id="crawl-queue-count" class="crawl-queue-count" hidden></span>
             </div>
-            <ul id="crawl-queue-list" class="crawl-queue-list"></ul>
-            <p id="crawl-queue-empty" class="news-empty-state">暂无爬取任务。</p>
+            <p class="news-empty-state">暂无爬取任务。</p>
           </section>
 
           {% if news_items and news_items|length > 0 %}

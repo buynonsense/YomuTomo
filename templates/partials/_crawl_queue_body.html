@@ -1,0 +1,110 @@
+{# htmx 片段：爬取队列面板的整段 section。
+
+- 外层 <section> 即 htmx swap target，带 hx-get / hx-trigger / hx-swap="outerHTML"
+- 每次响应都重新渲染整个 section，htmx 自动重新处理新内容 → 轮询持续
+- 模板里有任务时（含 active 或 recent）才显示；完全空时由 hidden 隐藏
+- 服务端通过 HX-Trigger 头派发 queue-update 事件，前端据此更新导航繁忙态
+
+输入 context:
+- active: list[CrawlTask]（pending / processing）
+- recent: list[CrawlTask]（completed / failed，最多 5 条）
+- active_count: int
+- recent_count: int
+#}
+<section id="crawl-queue-panel"
+         class="crawl-queue-panel"
+         hx-get="/crawl_queue/partial"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML"
+         data-active-count="{{ active_count }}"
+         {% if active_count == 0 and recent_count == 0 %}hidden{% endif %}>
+  <div class="crawl-queue-panel__header">
+    <div>
+      <h3>爬取队列</h3>
+      <p class="crawl-queue-meta">
+        {% if active_count > 0 %}
+          共 {{ active_count }} 个任务在跑，完成后会自动写入"我的文章"。
+        {% elif recent_count > 0 %}
+          当前无活跃任务。下方是最近 {{ recent_count }} 条历史记录。
+        {% else %}
+          实时显示所有进行中和最近完成的任务。
+        {% endif %}
+      </p>
+    </div>
+    <span class="crawl-queue-count{% if active_count == 0 %} is-hidden{% endif %}">
+      {% if active_count > 0 %}{{ active_count }} 进行中{% endif %}
+    </span>
+  </div>
+  <ul class="crawl-queue-list">
+    {% if active_count > 0 %}
+      <li class="crawl-queue-section-label">进行中（{{ active_count }}）</li>
+      {% for task in active %}
+        <li class="crawl-queue-item" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+          <div class="crawl-queue-item__head">
+            <span class="crawl-queue-item__title">任务 #{{ task.id }}</span>
+            <span class="crawl-queue-item__status is-{{ task.status }}">
+              {% if task.status == 'pending' %}排队中
+              {% elif task.status == 'processing' %}处理中
+              {% elif task.status == 'completed' %}已完成
+              {% elif task.status == 'failed' %}失败
+              {% else %}{{ task.status or '未知' }}{% endif %}
+            </span>
+          </div>
+          <div class="crawl-queue-item__bar">
+            <div class="crawl-queue-item__bar-fill" style="width: {{ task_progress_percent(task) }}%;"></div>
+          </div>
+          <div class="crawl-queue-item__meta">
+            {% set total = task.total_articles or 0 %}
+            {% set processed = task.processed_articles or 0 %}
+            {% if total > 0 %}
+              <span>{{ processed }} / {{ total }} 篇</span>
+            {% elif task.status == 'pending' %}
+              <span>等待开始</span>
+            {% else %}
+              <span>准备中…</span>
+            {% endif %}
+            {% if task.updated_at or task.created_at %}
+              <span>· 更新于 {{ task.updated_at or task.created_at | format_datetime }}</span>
+            {% endif %}
+            {% if task.message %}
+              <div class="crawl-queue-item__message">{{ task.message }}</div>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    {% endif %}
+    {% if recent and recent|length > 0 %}
+      <li class="crawl-queue-section-label">最近完成</li>
+      {% for task in recent[:5] %}
+        <li class="crawl-queue-item is-recent" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+          <div class="crawl-queue-item__head">
+            <span class="crawl-queue-item__title">任务 #{{ task.id }}</span>
+            <span class="crawl-queue-item__status is-{{ task.status }}">
+              {% if task.status == 'pending' %}排队中
+              {% elif task.status == 'processing' %}处理中
+              {% elif task.status == 'completed' %}已完成
+              {% elif task.status == 'failed' %}失败
+              {% else %}{{ task.status or '未知' }}{% endif %}
+            </span>
+          </div>
+          <div class="crawl-queue-item__bar">
+            <div class="crawl-queue-item__bar-fill" style="width: {{ task_progress_percent(task) }}%;"></div>
+          </div>
+          <div class="crawl-queue-item__meta">
+            {% set total = task.total_articles or 0 %}
+            {% set processed = task.processed_articles or 0 %}
+            {% if total > 0 %}
+              <span>{{ processed }} / {{ total }} 篇</span>
+            {% endif %}
+            {% if task.message %}
+              <div class="crawl-queue-item__message">{{ task.message }}</div>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    {% endif %}
+  </ul>
+  <p class="news-empty-state"{% if active_count > 0 or (recent and recent|length > 0) %} hidden{% endif %}>
+    暂无爬取任务。
+  </p>
+</section>

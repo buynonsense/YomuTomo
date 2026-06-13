@@ -9,20 +9,12 @@
     const previewEmpty = document.getElementById('rsshub-preview-empty');
     const previewMeta = document.getElementById('rsshub-preview-meta');
 
-    // 队列面板
-    const queuePanel = document.getElementById('crawl-queue-panel');
-    const queueList = document.getElementById('crawl-queue-list');
-    const queueEmpty = document.getElementById('crawl-queue-empty');
-    const queueCount = document.getElementById('crawl-queue-count');
-    const queueMeta = document.getElementById('crawl-queue-meta');
-
     // 选中工具栏
     const selectionToolbar = document.getElementById('news-selection-toolbar');
     const selectionCount = document.getElementById('news-selection-count');
     const selectionSubmit = document.getElementById('news-selection-submit');
     const selectionClear = document.getElementById('news-selection-clear');
 
-    let pollTimer = null;
     let isSubmitting = false;
 
     // 已选条目按 (source_url, source_feed_url) 分组，方便按源分批提交
@@ -446,182 +438,10 @@
         const totalItems = getSelectedCount();
         notify(`已提交 ${okCount} 个批次，共 ${totalItems} 篇文章到爬取队列`, 'success');
         clearSelection();
-        startPolling();
-        refreshQueue();
+        // htmx 自带每 2s 轮询，提交后无需手动启动
       }
       if (failCount > 0) {
         notify(`部分批次启动失败：${failed.join('；')}`, 'error');
-      }
-    }
-
-    // --- 队列面板渲染 ---------------------------------------------------
-
-    function setQueuePanelState(visible) {
-      if (queuePanel) {
-        queuePanel.hidden = !visible;
-      }
-    }
-
-    function taskStatusLabel(status) {
-      switch (status) {
-        case 'pending': return '排队中';
-        case 'processing': return '处理中';
-        case 'completed': return '已完成';
-        case 'failed': return '失败';
-        default: return status || '未知';
-      }
-    }
-
-    function taskProgressPercent(task) {
-      const total = Number(task.total_articles || 0);
-      const processed = Number(task.processed_articles || 0);
-      if (total <= 0) {
-        return task.status === 'processing' ? 5 : 0;
-      }
-      const ratio = processed / total;
-      return Math.max(0, Math.min(100, Math.round(ratio * 100)));
-    }
-
-    function createQueueItem(task, isRecent) {
-      const li = document.createElement('li');
-      li.className = 'crawl-queue-item';
-      li.dataset.taskId = String(task.task_id);
-      li.dataset.status = task.status;
-
-      const head = document.createElement('div');
-      head.className = 'crawl-queue-item__head';
-
-      const titleEl = document.createElement('span');
-      titleEl.className = 'crawl-queue-item__title';
-      titleEl.textContent = `任务 #${task.task_id}`;
-
-      const statusEl = document.createElement('span');
-      statusEl.className = `crawl-queue-item__status is-${task.status || 'pending'}`;
-      statusEl.textContent = taskStatusLabel(task.status);
-
-      head.appendChild(titleEl);
-      head.appendChild(statusEl);
-
-      const barWrap = document.createElement('div');
-      barWrap.className = 'crawl-queue-item__bar';
-      const barFill = document.createElement('div');
-      barFill.className = 'crawl-queue-item__bar-fill';
-      barFill.style.width = `${taskProgressPercent(task)}%`;
-      barWrap.appendChild(barFill);
-
-      const meta = document.createElement('div');
-      meta.className = 'crawl-queue-item__meta';
-      const total = Number(task.total_articles || 0);
-      const processed = Number(task.processed_articles || 0);
-      const progressLabel = total > 0
-        ? `${processed} / ${total} 篇`
-        : (task.status === 'pending' ? '等待开始' : '准备中…');
-      const timeLabel = formatTime(task.updated_at || task.created_at || '');
-      meta.textContent = timeLabel ? `${progressLabel} · 更新于 ${timeLabel}` : progressLabel;
-      if (task.message) {
-        const msg = document.createElement('div');
-        msg.className = 'crawl-queue-item__message';
-        msg.textContent = task.message;
-        meta.appendChild(msg);
-      }
-
-      li.appendChild(head);
-      li.appendChild(barWrap);
-      li.appendChild(meta);
-      if (isRecent) {
-        li.classList.add('is-recent');
-      }
-      return li;
-    }
-
-    function renderQueue(data) {
-      const active = Array.isArray(data && data.active) ? data.active : [];
-      const recent = Array.isArray(data && data.recent) ? data.recent : [];
-      const hasAny = active.length > 0 || recent.length > 0;
-      setQueuePanelState(hasAny);
-      if (queueEmpty) {
-        queueEmpty.hidden = hasAny;
-      }
-      if (!queueList) {
-        return;
-      }
-      queueList.innerHTML = '';
-      if (active.length > 0) {
-        const activeHeader = document.createElement('li');
-        activeHeader.className = 'crawl-queue-section-label';
-        activeHeader.textContent = `进行中（${active.length}）`;
-        queueList.appendChild(activeHeader);
-        active.forEach((t) => queueList.appendChild(createQueueItem(t, false)));
-      }
-      if (recent.length > 0) {
-        const recentHeader = document.createElement('li');
-        recentHeader.className = 'crawl-queue-section-label';
-        recentHeader.textContent = '最近完成';
-        queueList.appendChild(recentHeader);
-        recent.slice(0, 5).forEach((t) => queueList.appendChild(createQueueItem(t, true)));
-      }
-      if (queueCount) {
-        if (active.length > 0) {
-          queueCount.hidden = false;
-          queueCount.textContent = `${active.length} 进行中`;
-        } else {
-          queueCount.hidden = true;
-        }
-      }
-      if (queueMeta) {
-        if (active.length > 0) {
-          queueMeta.textContent = `共 ${active.length} 个任务在跑，完成后会自动写入“我的文章”。`;
-        } else if (recent.length > 0) {
-          queueMeta.textContent = `当前无活跃任务。下方是最近 ${Math.min(recent.length, 5)} 条历史记录。`;
-        } else {
-          queueMeta.textContent = '实时显示所有进行中和最近完成的任务。';
-        }
-      }
-    }
-
-    async function fetchQueue() {
-      const response = await fetch('/crawl_queue');
-      let data = null;
-      try {
-        data = await response.json();
-      } catch (e) {
-        throw new Error('爬取队列响应解析失败');
-      }
-      if (!response.ok) {
-        throw new Error((data && (data.message || data.error)) || '获取爬取队列失败');
-      }
-      return data;
-    }
-
-    async function refreshQueue() {
-      try {
-        const data = await fetchQueue();
-        renderQueue(data);
-        const active = (data && data.counts && Number(data.counts.active)) || 0;
-        if (window.TaskState && typeof window.TaskState.setNewsNavBusy === 'function') {
-          window.TaskState.setNewsNavBusy(active > 0);
-        }
-        if (active > 0) {
-          startPolling();
-        } else {
-          stopPolling();
-        }
-      } catch (error) {
-        console.error('同步爬取队列失败', error);
-      }
-    }
-
-    function startPolling() {
-      if (pollTimer) {
-        return;
-      }
-      pollTimer = window.setInterval(refreshQueue, 2000);
-    }
-
-    function stopPolling() {
-      if (pollTimer) {
-        window.clearInterval(pollTimer);
-        pollTimer = null;
       }
     }
 
@@ -657,6 +477,6 @@
 
     formatNewsTimeElements(document);
     bindInitial();
-    refreshQueue();
+    // 爬取队列面板由 htmx 自动轮询，无需手动启动
   });
 })();
