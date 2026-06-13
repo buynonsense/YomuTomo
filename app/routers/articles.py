@@ -623,18 +623,23 @@ async def save_ai_config(
 ):
     user = require_login(request, db)
     if not user:
+        if getattr(request.state, "htmx", False):
+            return _ai_config_feedback_response(request, success=False, message="请先登录")
         return RedirectResponse(url="/login", status_code=303)
-    
+
+    success = False
+    message = ""
     try:
         # Use the unified async AI client to validate provider (handles Gemini/Google GL correctly)
         test_model = openai_model
         provider = {"api_url": openai_base_url or '', "api_key": openai_api_key, "model": test_model, "extra": {}}
         client = AIClient.factory(provider)
         try:
-            resp = await client.chat([{"role": "user", "content": "Hello"}])
+            await client.chat([{"role": "user", "content": "Hello"}])
         except AIClientError as e:
             db.rollback()
-            return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
+            message = f"AI配置验证失败: {e}"
+            return _ai_config_feedback_response(request, success=False, message=message)
 
         # save configuration to database
         user.openai_api_key = openai_api_key
@@ -656,10 +661,35 @@ async def save_ai_config(
         except Exception as notify_error:
             log_with_time(f"❌ 写入 AI 配置保存通知失败 user_id={user.id}: {notify_error}", level="ERROR")
 
-        return {"success": True, "message": "AI配置保存成功"}
+        success = True
+        message = "AI配置保存成功"
     except Exception as e:
         db.rollback()
-        return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
+        message = f"AI配置验证失败: {e}"
+        return _ai_config_feedback_response(request, success=False, message=message)
+
+    if getattr(request.state, "htmx", False):
+        return _ai_config_feedback_response(request, success=success, message=message)
+    return {"success": success, "message": message}
+
+
+def _ai_config_feedback_response(request: Request, *, success: bool, message: str):
+    """构造 AI 配置保存的 htmx 反馈片段，并派发 HX-Trigger 事件。
+
+    - success → ai-config-saved 事件
+    - 失败    → ai-config-failed 事件，detail.message 供 toast 使用
+    """
+    templates = create_templates("templates")
+    response = templates.TemplateResponse(
+        request,
+        "partials/_ai_config_feedback.html",
+        {"success": success, "message": message},
+    )
+    event = "ai-config-saved" if success else "ai-config-failed"
+    response.headers["HX-Trigger"] = json.dumps(
+        {event: {"message": message}}
+    )
+    return response
 
 
 @router.get("/crawl_status", summary="获取爬虫任务状态")

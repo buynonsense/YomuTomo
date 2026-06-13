@@ -333,3 +333,266 @@ def test_task_state_listens_to_htmx_queue_update():
     assert "activeCount" in js
     # 事件回调必须调用 updateNewsNavBusy（保持导航项 is-busy class 与服务端一致）
     assert "updateNewsNavBusy" in js
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 3a: AI 配置保存 → htmx 表单
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_ai_config_form_uses_htmx_post_in_modal():
+    modal = (REPO_ROOT / "templates" / "partials" / "global_settings_modal.html").read_text(encoding="utf-8")
+    # AI panel 内的表单必须是 htmx 表单
+    assert 'id="ai-config-form"' in modal
+    assert 'hx-post="/save_ai_config"' in modal
+    assert 'hx-target="#ai-config-feedback"' in modal
+    # 输入字段必须有 name，否则 form 序列化不到后端
+    assert 'name="openai_api_key"' in modal
+    assert 'name="openai_base_url"' in modal
+    assert 'name="openai_model"' in modal
+    # 保存按钮必须是 submit，交给 htmx 自动接管
+    assert 'id="save-config"' in modal
+    assert 'type="submit"' in modal
+    # 反馈容器存在
+    assert 'id="ai-config-feedback"' in modal
+
+
+def test_ai_config_feedback_partial_has_success_and_error_branches():
+    partial = (REPO_ROOT / "templates" / "partials" / "_ai_config_feedback.html").read_text(encoding="utf-8")
+    assert "{% if success %}" in partial
+    assert "{% else %}" in partial
+    assert "is-success" in partial
+    assert "is-error" in partial
+    assert "AI 配置" in partial
+
+
+def test_settings_modal_js_no_longer_binds_click_save_ai_config():
+    """Stage 3a: save-config 不再绑 saveAiConfig，改为 type=submit + htmx 自提交。"""
+    js = (REPO_ROOT / "static" / "js" / "modules" / "settings-modal.js").read_text(encoding="utf-8")
+    # 旧的 click→saveAiConfig 链路已删除
+    assert "saveConfigBtn.addEventListener('click', saveAiConfig)" not in js
+    assert "async function saveAiConfig" not in js
+    # 新链路：提交按钮 type=submit，由 htmx 接管
+    assert "setAttribute('type', 'submit')" in js
+    # 业务反馈走 HX-Trigger 派发的 ai-config-saved / ai-config-failed 事件
+    assert "'ai-config-saved'" in js
+    assert "'ai-config-failed'" in js
+    assert "attachHtmxListeners" in js
+
+
+class _StubAIClient:
+    """替身 AIClient：跳过真实 chat，直接假装通过。"""
+
+    last_chat: list | None = None
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    async def chat(self, messages):
+        type(self).last_chat = messages
+        return {"ok": True}
+
+
+def test_save_ai_config_htmx_success_returns_fragment_and_trigger(client, db_session, monkeypatch):
+    """htmx 请求保存成功：返回 partial + HX-Trigger: ai-config-saved。"""
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3a-ok@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="",
+        openai_base_url="",
+        openai_model="",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    # 替身 AIClient.factory，避免真打远程 API
+    from app.services import ai_client_async as ai_module
+
+    monkeypatch.setattr(ai_module.AIClient, "factory", staticmethod(lambda provider: _StubAIClient(provider)))
+
+    with client as c:
+        c.post("/login", data={"email": "stage3a-ok@example.com", "password": "secret123"})
+        resp = c.post(
+            "/save_ai_config",
+            data={
+                "openai_api_key": "sk-stage3a",
+                "openai_base_url": "https://api.example.com/v1",
+                "openai_model": "gpt-4o-mini",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert "is-success" in body
+    assert "AI 配置已保存成功" in body
+    assert "is-error" not in body
+
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    assert "ai-config-saved" in trigger
+    assert trigger["ai-config-saved"]["message"] == "AI配置保存成功"
+
+    # 落库断言
+    db_session.refresh(user)
+    assert user.openai_api_key == "sk-stage3a"
+    assert user.openai_model == "gpt-4o-mini"
+
+
+def test_save_ai_config_htmx_failure_returns_error_fragment(client, db_session, monkeypatch):
+    """htmx 请求保存失败：返回 partial + HX-Trigger: ai-config-failed。"""
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3a-fail@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="",
+        openai_base_url="",
+        openai_model="",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    class _BrokenAIClient(_StubAIClient):
+        async def chat(self, messages):
+            from app.services.ai_client_async import AIClientError
+
+            raise AIClientError("remote 401 unauthorized")
+
+    from app.services import ai_client_async as ai_module
+
+    monkeypatch.setattr(ai_module.AIClient, "factory", staticmethod(lambda provider: _BrokenAIClient(provider)))
+
+    with client as c:
+        c.post("/login", data={"email": "stage3a-fail@example.com", "password": "secret123"})
+        resp = c.post(
+            "/save_ai_config",
+            data={
+                "openai_api_key": "sk-bad",
+                "openai_base_url": "https://api.example.com/v1",
+                "openai_model": "gpt-4o-mini",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert "is-error" in body
+    assert "401" in body
+    assert "is-success" not in body
+
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    assert "ai-config-failed" in trigger
+    assert "401" in trigger["ai-config-failed"]["message"]
+
+    # 失败时不应落库
+    db_session.refresh(user)
+    assert user.openai_api_key == ""
+
+
+def test_save_ai_config_non_htmx_request_still_returns_json(client, db_session, monkeypatch):
+    """非 htmx 请求（非 XHR 场景）维持 JSON 响应，避免破坏其他调用方。"""
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3a-json@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="",
+        openai_base_url="",
+        openai_model="",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    from app.services import ai_client_async as ai_module
+
+    monkeypatch.setattr(ai_module.AIClient, "factory", staticmethod(lambda provider: _StubAIClient(provider)))
+
+    with client as c:
+        c.post("/login", data={"email": "stage3a-json@example.com", "password": "secret123"})
+        resp = c.post(
+            "/save_ai_config",
+            data={
+                "openai_api_key": "sk-x",
+                "openai_base_url": "https://api.example.com/v1",
+                "openai_model": "gpt-4o-mini",
+            },
+            # 不带 HX-Request 头
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # JSON 响应里 success 字段是 true，键值无空格
+    assert '"success":true' in body or '"success": true' in body
+    assert "AI配置保存成功" in body
+    # 也没有 htmx 反馈片段特征
+    assert "ai-config-feedback__inner" not in body
+
