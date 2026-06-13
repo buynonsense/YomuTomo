@@ -24,6 +24,12 @@ class ReadingPageController {
     this.audio = null;
     this.currentAudioUrl = null;
     this.currentAbortController = null;
+    // 客户端 TTS 批量加载器：把全文一次性拉到 IndexedDB，避免逐句网络等待
+    this.ttsBatchLoader = (typeof window !== 'undefined' && window.TtsBatchLoader)
+      ? new window.TtsBatchLoader()
+      : null;
+    this.ttsPreloadAbortController = null;
+    this.ttsPreloadInFlight = false;
     this.root = document.body;
     this.wordHighlighter = null;
     this.evaluationDetailEl = null;
@@ -39,6 +45,7 @@ class ReadingPageController {
     this.bindPdfExport();
     this.bindFuriganaMode();
     this.bindTtsControls();
+    this.bindTtsPreload();
     this.bindVocabControls();
     this.bindBackToTop();
     this.bindFuriganaLevelFilter();
@@ -53,6 +60,10 @@ class ReadingPageController {
     this.stopBtn = document.getElementById('stop-btn');
     this.ttsPlayBtn = document.getElementById('tts-play-btn');
     this.ttsStopBtn = document.getElementById('tts-stop-btn');
+    this.ttsPreloadBtn = document.getElementById('tts-preload-btn');
+    this.ttsPreloadProgress = document.getElementById('tts-preload-progress');
+    this.ttsPreloadProgressFill = document.getElementById('tts-preload-progress-fill');
+    this.ttsPreloadProgressText = document.getElementById('tts-preload-progress-text');
     this.toggleMasteredBtn = document.getElementById('toggle-mastered-btn');
     this.articleId = document.getElementById('article-id')?.textContent?.trim() || '';
     this.resultDiv = document.getElementById('result');
@@ -238,6 +249,130 @@ class ReadingPageController {
         this.stopSpeech();
       });
     }
+  }
+
+  bindTtsPreload() {
+    if (!this.ttsPreloadBtn) {
+      return;
+    }
+    if (!this.ttsBatchLoader) {
+      // 浏览器不支持 IndexedDB → 按钮置灰，提示用户
+      this.ttsPreloadBtn.disabled = true;
+      this.ttsPreloadBtn.title = '当前浏览器不支持 IndexedDB，无法启用本地缓存';
+      return;
+    }
+    this.ttsPreloadBtn.addEventListener('click', () => {
+      if (this.ttsPreloadInFlight) {
+        this.cancelTtsPreload();
+        return;
+      }
+      this.preloadAllTts();
+    });
+  }
+
+  setTtsPreloadProgressUI(visible, percent, text) {
+    if (this.ttsPreloadProgress) {
+      this.ttsPreloadProgress.hidden = !visible;
+    }
+    if (this.ttsPreloadProgressFill && typeof percent === 'number') {
+      const pct = Math.max(0, Math.min(100, percent));
+      this.ttsPreloadProgressFill.style.width = `${pct}%`;
+    }
+    if (this.ttsPreloadProgressText && typeof text === 'string') {
+      this.ttsPreloadProgressText.textContent = text;
+    }
+  }
+
+  async preloadAllTts() {
+    if (!this.ttsBatchLoader) {
+      this.notify('当前浏览器不支持 IndexedDB，无法加载语音', 'error');
+      return;
+    }
+    if (!Array.isArray(this.sentenceItems) || this.sentenceItems.length === 0) {
+      this.notify('当前没有可加载的句子', 'warning');
+      return;
+    }
+    if (this.ttsPreloadInFlight) {
+      return;
+    }
+
+    const items = this.sentenceItems
+      .map((s, idx) => ({ key: `s${idx}`, text: (s && s.text ? String(s.text) : '').trim() }))
+      .filter((s) => s.text);
+
+    if (items.length === 0) {
+      this.notify('当前没有可加载的句子', 'warning');
+      return;
+    }
+
+    this.ttsPreloadInFlight = true;
+    this.ttsPreloadAbortController = new AbortController();
+    if (this.ttsPreloadBtn) {
+      this.ttsPreloadBtn.disabled = false;
+      const labelEl = this.ttsPreloadBtn.querySelector('.btn-label') || this.ttsPreloadBtn;
+      labelEl.textContent = '⏹️ 停止加载';
+    }
+    this.setTtsPreloadProgressUI(true, 0, `开始加载（0/${items.length}）…`);
+    this.notify(`开始加载 ${items.length} 句语音…`, 'info');
+
+    let lastPct = 0;
+    try {
+      const summary = await this.ttsBatchLoader.loadAll(items, {
+        language: 'JP',
+        speed: 1.0,
+        signal: this.ttsPreloadAbortController.signal,
+        onProgress: (p) => {
+          const pct = p.total > 0 ? Math.round(((p.done) / p.total) * 100) : 0;
+          lastPct = pct;
+          this.setTtsPreloadProgressUI(
+            true,
+            pct,
+            `${p.done}/${p.total}（已缓存 ${p.ok + p.skipped}，失败 ${p.fail}）`
+          );
+        }
+      });
+
+      if (this.ttsPreloadAbortController && this.ttsPreloadAbortController.signal.aborted) {
+        this.setTtsPreloadProgressUI(true, lastPct, `已停止（${summary.done || 0}/${summary.total}）`);
+        this.notify('语音加载已停止', 'warning');
+      } else if (summary.fail > 0 && summary.ok + summary.skipped === 0) {
+        this.setTtsPreloadProgressUI(true, 100, `加载失败（${summary.fail} 句）`);
+        this.notify(`语音加载失败：${summary.fail} 句全部失败`, 'error');
+      } else {
+        this.setTtsPreloadProgressUI(true, 100, `完成（${summary.ok + summary.skipped}/${summary.total}）`);
+        const cachedCount = summary.ok + summary.skipped;
+        if (summary.fail > 0) {
+          this.notify(`语音加载完成：${cachedCount} 句就绪，${summary.fail} 句失败`, 'warning');
+        } else {
+          this.notify(`语音加载完成：${cachedCount} 句已就绪，可离线播放`, 'success');
+        }
+      }
+    } catch (err) {
+      console.error('批量加载 TTS 出错', err);
+      this.setTtsPreloadProgressUI(true, lastPct, `加载出错：${(err && err.message) || err}`);
+      this.notify(`语音加载出错：${(err && err.message) || err}`, 'error');
+    } finally {
+      this.ttsPreloadInFlight = false;
+      this.ttsPreloadAbortController = null;
+      if (this.ttsPreloadBtn) {
+        const labelEl = this.ttsPreloadBtn.querySelector('.btn-label') || this.ttsPreloadBtn;
+        labelEl.textContent = '⬇️ 加载语音';
+      }
+    }
+  }
+
+  cancelTtsPreload() {
+    if (this.ttsPreloadAbortController) {
+      try { this.ttsPreloadAbortController.abort(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  notify(message, type) {
+    if (typeof window !== 'undefined' && typeof window.notify === 'function') {
+      try { window.notify(message, type || 'info'); return; } catch (_) { /* ignore */ }
+    }
+    // 兜底：控制台输出，避免静默失败
+    console.log(`[notify:${type || 'info'}] ${message}`);
   }
 
   bindVocabControls() {
@@ -460,7 +595,7 @@ class ReadingPageController {
   }
 
   /**
-   * 拉取服务端 TTS WAV 并播放；命中缓存秒开，未命中要等 MeloTTS 推理（30-60s 首次）
+   * 拉取服务端 TTS WAV 并播放；优先吃 IndexedDB 客户端缓存，未命中才走网络
    * @param {number} sessionId
    * @param {string} text
    * @param {{speed?:number,language?:string}} options
@@ -476,6 +611,30 @@ class ReadingPageController {
     const controller = new AbortController();
     this.currentAbortController = controller;
 
+    const language = options.language || 'JP';
+    const speed = typeof options.speed === 'number' ? options.speed : 1.0;
+
+    // 1) 客户端缓存优先（"加载语音" 预热过的话，秒开）
+    if (this.ttsBatchLoader) {
+      try {
+        const cached = await this.ttsBatchLoader.get(text, { language, speed });
+        if (!this.isActivePlayback(sessionId)) {
+          return;
+        }
+        if (cached && cached.blob) {
+          const url = URL.createObjectURL(cached.blob);
+          this.releaseCurrentAudio();
+          this.currentAudioUrl = url;
+          this.audio = new Audio(url);
+          this.audio.preload = 'auto';
+          return;
+        }
+      } catch (err) {
+        console.warn('读取 TTS 客户端缓存失败，回退到网络', err);
+      }
+    }
+
+    // 2) 未命中：走服务端
     const body = { text };
     if (typeof options.speed === 'number') body.speed = options.speed;
     if (options.language) body.language = options.language;
@@ -516,12 +675,17 @@ class ReadingPageController {
     if (!this.isActivePlayback(sessionId)) {
       return;
     }
+    // 顺手写回客户端缓存，下次秒开
+    if (this.ttsBatchLoader) {
+      this.ttsBatchLoader.put(text, blob, { language, speed }).catch((err) => {
+        console.warn('写入 TTS 客户端缓存失败', err);
+      });
+    }
     const url = URL.createObjectURL(blob);
     this.releaseCurrentAudio();
     this.currentAudioUrl = url;
-    const audio = new Audio(url);
-    audio.preload = 'auto';
-    this.audio = audio;
+    this.audio = new Audio(url);
+    this.audio.preload = 'auto';
   }
 
   releaseCurrentAudio() {
