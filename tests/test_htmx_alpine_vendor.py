@@ -1254,3 +1254,71 @@ def test_vocab_review_drops_legacy_imperative_state():
     # 旧版 init 末尾的 syncReviewUI 调用没了
     assert "syncReviewUI();\n      });" not in js
 
+
+# ---------------------------------------------------------------------------
+# Stage 4c: 新闻多选改 Alpine 局部状态机
+# ---------------------------------------------------------------------------
+
+
+def test_news_center_template_uses_alpine_x_data():
+    """Stage 4c: 选中工具栏用 Alpine x-data 接管状态。"""
+    template = (REPO_ROOT / "templates" / "news_center.html").read_text(encoding="utf-8")
+    assert 'x-data="newsSelection()"' in template
+    # 显隐走 x-bind:hidden
+    assert 'x-bind:hidden="count === 0"' in template
+    # 数量/按钮 label 走 x-text
+    assert 'id="news-selection-count"' in template
+    assert 'x-text="count"' in template
+    assert 'x-text="submitLabel"' in template
+    # 按钮 enabled 走 x-bind:disabled
+    assert 'x-bind:disabled="count === 0 || isSubmitting"' in template
+    # 清空/提交绑定 Alpine 方法
+    assert 'x-on:click="clear()"' in template
+    assert 'x-on:click="submit()"' in template
+    # 监听桥接层派发的事件
+    assert "x-on:news:selection-changed.window" in template
+
+
+def test_news_center_js_exposes_alpine_factory():
+    """Stage 4c: news-center.js 注册 window.newsSelection 工厂 + bridge。"""
+    js = (REPO_ROOT / "static" / "js" / "pages" / "news-center.js").read_text(encoding="utf-8")
+    assert "window.newsSelection" in js
+    assert "window.__newsSelectionBridge" in js
+    # Alpine 反应式字段
+    assert "count: 0" in js
+    assert "isSubmitting: false" in js
+    # Alpine 工厂方法
+    assert "submitLabel" in js
+    assert "clear()" in js
+    assert "submit()" in js
+    # 派生 getter
+    assert "get submitLabel()" in js
+    # 桥接层方法
+    assert "add(card)" in js
+    assert "remove(card)" in js
+    assert "clearAll()" in js
+    assert "submitAll(" in js
+    assert "getCount()" in js
+    # 事件名
+    assert "news:selection-changed" in js
+    assert "CustomEvent" in js
+
+
+def test_news_center_drops_legacy_imperative_state():
+    """Stage 4c: 旧版模块级闭包变量已删除。"""
+    js = (REPO_ROOT / "static" / "js" / "pages" / "news-center.js").read_text(encoding="utf-8")
+    # 旧版的 selectedBySource 顶层 let
+    assert "let selectedBySource = new Map()" not in js
+    # 旧版的 isSubmitting 顶层 let
+    assert "let isSubmitting = false" not in js
+    # 旧版的 processSubmitSelection / addSelection / removeSelection 顶层函数
+    assert "function processSubmitSelection" not in js
+    assert "function addSelection(" not in js
+    assert "function removeSelection(" not in js
+    # 旧版 updateSelectionToolbar 命令式更新 DOM
+    assert "function updateSelectionToolbar" not in js
+    # selectionCount.textContent 命令式赋值没了
+    assert "selectionCount.textContent = String(count)" not in js
+    # selectionToolbar.hidden 命令式切换没了
+    assert "selectionToolbar.hidden = count === 0" not in js
+
