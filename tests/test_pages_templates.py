@@ -64,7 +64,9 @@ def test_news_center_checks_status_response_ok():
     from pathlib import Path
 
     news_center_js = Path("static/js/pages/news-center.js").read_text(encoding="utf-8")
-    assert news_center_js.count("response.ok") >= 3
+    # Stage 2 把爬取队列的轮询迁到了 htmx 片段，所以这里至少还有 2 处 response.ok
+    # （自定义订阅源预览 + 多选批量提交）
+    assert news_center_js.count("response.ok") >= 2
     assert "window.Utils.formatDateTime" in news_center_js
     assert "data-news-published-at" in news_center_js
 

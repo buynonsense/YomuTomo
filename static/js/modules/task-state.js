@@ -115,6 +115,25 @@
     updateNewsNavBusy(!!activeTask && activeTask.status === 'processing');
   }
 
+  // 监听 htmx 派发的 queue-update 事件（由 /crawl_queue/partial 响应头触发），
+  // 保持导航"新闻中心"项的繁忙态与服务端爬取队列一致。
+  function bindHtmxQueueUpdate() {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    document.addEventListener('queue-update', function (event) {
+      var detail = event && event.detail ? event.detail : {};
+      var active = Number(detail.activeCount || 0);
+      updateNewsNavBusy(active > 0);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindHtmxQueueUpdate);
+  } else {
+    bindHtmxQueueUpdate();
+  }
+
   window.TaskState = {
     readActiveTask: readActiveTask,
     writeActiveTask: writeActiveTask,

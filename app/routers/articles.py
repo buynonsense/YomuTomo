@@ -756,6 +756,75 @@ async def get_crawl_queue(
     }
 
 
+@router.get("/crawl_queue/partial", response_class=HTMLResponse, summary="爬取队列 htmx 片段（self-polling）")
+async def get_crawl_queue_partial(
+    request: Request,
+    db: Session = Depends(get_db),
+    recent_limit: int = Query(5, ge=1, le=20),
+):
+    """返回爬取队列面板的 HTML 片段，供 htmx `hx-get` 轮询使用。
+
+    - 整个片段本身就是 htmx polling unit，外层 div 带 `hx-get`/`hx-trigger`/`hx-swap="outerHTML"`
+    - 通过 HX-Trigger 头派发 `queue-update` 事件，便于前端做导航繁忙态同步
+    - 未登录时仍然返回 200 + 空状态片段，避免 htmx 反复重试
+    """
+    from app.model.models import CrawlTask
+    from spider.rsshub_spider import TASK_FAILURE_MESSAGES
+
+    user = require_login(request, db)
+    active: list = []
+    recent: list = []
+    if user:
+        active_q = (
+            db.query(CrawlTask)
+            .filter(
+                CrawlTask.user_id == user.id,
+                CrawlTask.status.in_(("pending", "processing")),
+            )
+            .order_by(CrawlTask.created_at.asc())
+            .all()
+        )
+        recent_q = (
+            db.query(CrawlTask)
+            .filter(
+                CrawlTask.user_id == user.id,
+                CrawlTask.status.in_(("completed", "failed")),
+            )
+            .order_by(CrawlTask.updated_at.desc())
+            .limit(recent_limit)
+            .all()
+        )
+
+        def _attach_message(task):
+            """把 spider 维护的失败原因挂到 ORM 对象上，供模板读取。"""
+            message = TASK_FAILURE_MESSAGES.get(task.id)
+            if message:
+                # SQLAlchemy 不允许在实例上加新列；改用 setattr on attribute
+                setattr(task, "message", message)
+            return task
+
+        active = [_attach_message(t) for t in active_q]
+        recent = [_attach_message(t) for t in recent_q]
+
+    active_count = len(active)
+    templates = create_templates("templates")
+    response = templates.TemplateResponse(
+        request,
+        "partials/_crawl_queue_body.html",
+        {
+            "active": active,
+            "recent": recent,
+            "active_count": active_count,
+            "recent_count": len(recent),
+        },
+    )
+    # 派发自定义事件，让前端可以更新导航繁忙态
+    response.headers["HX-Trigger"] = json.dumps(
+        {"queue-update": {"activeCount": active_count}}
+    )
+    return response
+
+
 @router.get("/get_user_level", summary="获取用户当前等级")
 async def get_user_level(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
