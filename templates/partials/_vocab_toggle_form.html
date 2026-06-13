@@ -1,0 +1,27 @@
+{# htmx 片段：单个生词条目的 toggle 按钮表单。
+
+服务端 POST /vocabulary/toggle 在 htmx 请求下返回此 partial 整段，
+htmx 用 outerHTML 把它替换回原 form 位置，实现"按一下切换"。
+
+表单字段：
+- word / pronunciation / meaning / article_id：定位这条生词（来自 DOM 隐藏字段）
+- current_mastered：当前 0/1，服务端会翻转
+
+HX-Trigger: vocab-toggled with {word, mastered}，前端用事件同步 .vocab-item 的 is-mastered class。
+#}
+{% set is_mastered = (current_mastered | int(default=0)) == 1 %}
+{% set button_label = "取消掌握" if is_mastered else "已掌握" %}
+<form class="vocab-toggle-form"
+      hx-post="/vocabulary/toggle"
+      hx-swap="outerHTML"
+      hx-target="this"
+      data-vocab-word="{{ word }}">
+  <input type="hidden" name="word" value="{{ word }}" />
+  <input type="hidden" name="pronunciation" value="{{ pronunciation or '' }}" />
+  <input type="hidden" name="meaning" value="{{ meaning or '' }}" />
+  <input type="hidden" name="article_id" value="{{ article_id or '' }}" />
+  <input type="hidden" name="current_mastered" value="{{ 1 if is_mastered else 0 }}" />
+  <button type="submit"
+          class="btn-remove{% if is_mastered %} is-mastered{% endif %}"
+          data-vocab-action="toggle-mastered">{{ button_label }}</button>
+</form>

@@ -78,13 +78,27 @@
           <div class="vocab-container">
             <div id="vocab-grid" class="vocab-grid">
               {% for item in vocab %}
-              <div class="vocab-item" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.mastered else 0 }}">
+              <div class="vocab-item{% if item.mastered %} is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.mastered else 0 }}">
                 <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
                 <div class="vocab-word">{{ item.word }}</div>
                 <div class="vocab-meaning">释义：{{ item.meaning }}</div>
                 <div class="vocab-actions">
                   <button type="button" class="btn-icon" data-vocab-action="speak" aria-label="朗读生词">🔊</button>
-                  <button type="button" class="btn-remove" data-vocab-action="toggle-mastered">已掌握</button>
+                  {# htmx 表单：提交后整段 form 被 outerHTML 替换；HX-Trigger 同步父级 .vocab-item.classList #}
+                  <form class="vocab-toggle-form"
+                        hx-post="/vocabulary/toggle"
+                        hx-swap="outerHTML"
+                        hx-target="this"
+                        data-vocab-word="{{ item.word }}">
+                    <input type="hidden" name="word" value="{{ item.word }}" />
+                    <input type="hidden" name="pronunciation" value="{{ item.pronunciation or '' }}" />
+                    <input type="hidden" name="meaning" value="{{ item.meaning or '' }}" />
+                    <input type="hidden" name="article_id" value="{{ article_id or '' }}" />
+                    <input type="hidden" name="current_mastered" value="{{ 1 if item.mastered else 0 }}" />
+                    <button type="submit"
+                            class="btn-remove{% if item.mastered %} is-mastered{% endif %}"
+                            data-vocab-action="toggle-mastered">{{ '取消掌握' if item.mastered else '已掌握' }}</button>
+                  </form>
                 </div>
               </div>
               {% endfor %}

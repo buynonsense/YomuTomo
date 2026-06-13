@@ -8,6 +8,17 @@ let textHighlighter;
 let pdfExporter;
 let ttsWordHighlighter;
 
+/**
+ * 给 CSS attribute 选择器做转义，避免 data-vocab-word 含空格/引号/日文字符时
+ * querySelectorAll 抛 SyntaxError。
+ */
+function cssEscape(value) {
+  if (window.CSS && typeof window.CSS.escape === 'function') {
+    return window.CSS.escape(value);
+  }
+  return String(value).replace(/(["\\\]\[\(\)\.\#\:\>\+\~\*\^\$\|\=\@])/g, '\\$1');
+}
+
 class ReadingPageController {
   constructor() {
     this.storageKey = 'yomu-reading-state';
@@ -47,6 +58,7 @@ class ReadingPageController {
     this.bindTtsControls();
     this.bindTtsPreload();
     this.bindVocabControls();
+    this.bindVocabToggleSync();
     this.bindBackToTop();
     this.bindFuriganaLevelFilter();
     this.restoreState();
@@ -402,15 +414,29 @@ class ReadingPageController {
         return;
       }
 
-      const action = button.getAttribute('data-vocab-action');
-      if (action === 'speak') {
+      // Stage 3b: toggle-mastered 改用 htmx <form hx-post> 自提交；
+      // 不再走 fetch(JSON) + 手改 data-vocab-mastered，class 同步交给 vocab-toggled 事件。
+      if (button.getAttribute('data-vocab-action') === 'speak') {
         this.speakVocabWord(button);
+      }
+    });
+  }
+
+  // Stage 3b: 监听服务端 HX-Trigger 派发的 vocab-toggled 事件，
+  // 把父级 .vocab-item 的 is-mastered class 与 data-vocab-mastered 同步。
+  bindVocabToggleSync() {
+    document.addEventListener('vocab-toggled', (event) => {
+      const detail = (event && event.detail) || {};
+      const word = detail.word;
+      if (!word) {
         return;
       }
-
-      if (action === 'toggle-mastered') {
-        this.toggleVocabMastered(button);
-      }
+      const mastered = detail.mastered ? '1' : '0';
+      const selector = `.vocab-item[data-vocab-word="${cssEscape(word)}"]`;
+      document.querySelectorAll(selector).forEach((item) => {
+        item.dataset.vocabMastered = mastered;
+        item.classList.toggle('is-mastered', mastered === '1');
+      });
     });
   }
 
@@ -910,51 +936,8 @@ class ReadingPageController {
     }
   }
 
-  toggleVocabMastered(button) {
-    const item = button.closest('.vocab-item');
-    if (!item) {
-      return;
-    }
-
-    const word = item.dataset.vocabWord || '';
-    if (!word) {
-      return;
-    }
-
-    const pronunciation = item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '';
-    const meaning = item.querySelector('.vocab-meaning')?.textContent || '';
-    const mastered = item.dataset.vocabMastered !== '1';
-
-    button.disabled = true;
-    this.persistVocabularyStatus({ word, pronunciation, meaning, mastered, article_id: this.articleId ? Number(this.articleId) : null })
-      .then((data) => {
-        item.dataset.vocabMastered = data.mastered ? '1' : '0';
-        this.refreshVocabView();
-      })
-      .catch((error) => {
-        console.error('保存生词状态失败', error);
-        if (this.resultDiv) {
-          this.resultDiv.innerHTML = `<p style="color: var(--danger-color);">保存生词状态失败：${error.message}</p>`;
-        }
-      })
-      .finally(() => {
-        button.disabled = false;
-      });
-  }
-
-  persistVocabularyStatus(payload) {
-    return fetch('/vocabulary/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(async (response) => {
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || '保存失败');
-      }
-      return data;
-    });
-  }
+  // Stage 3b: 旧版 toggleVocabMastered / persistVocabularyStatus 已删除。
+  // 现在 toggle 由 htmx <form hx-post> 接管，class 同步走 vocab-toggled 事件。
 
   refreshVocabView() {
     document.querySelectorAll('.vocab-item').forEach((item) => {
