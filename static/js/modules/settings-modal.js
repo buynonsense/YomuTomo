@@ -1,189 +1,30 @@
 /**
- * 统一设置弹窗模块
- * 负责全局导航入口、AI 配置和用户设置切换
+ * 统一设置弹窗 - Alpine.js 版本
+ *
+ * 状态机集中在 Alpine x-data 工厂 settingsModal()：
+ * - isOpen / activeTab / isSubmitting 等响应式状态
+ * - open/close/switchTab/saveUserSettings 等方法
+ * - 通过 window.openSettingsModal(tab) 提供对外的同步 API
+ *
+ * 仍保留的功能：
+ * - 关闭后恢复 body 滚动
+ * - 顶部 ESC 关闭
+ * - 模态外点击关闭
+ * - 监听 ai-config-saved / ai-config-failed 同步状态徽标和提示 toast
  */
 
 (function () {
-  let settingsModalOpen = false;
-  let closingTimer = null;
-  let bodyRestoreTimer = null;
-  let outsideClickHandler = null;
-  let escapeKeyHandler = null;
-  let aiConfigLoaded = false;
+  'use strict';
 
   function getAiConfigManager() {
     if (window.aiConfigManager) {
       return window.aiConfigManager;
     }
-
     if (window.AIConfigManager) {
       window.aiConfigManager = new AIConfigManager();
       return window.aiConfigManager;
     }
-
     return null;
-  }
-
-  function getModalElements() {
-    const modal = document.getElementById('settings-modal');
-    return {
-      modal,
-      tabAi: document.getElementById('settings-tab-ai'),
-      tabUser: document.getElementById('settings-tab-user'),
-      panelAi: document.getElementById('settings-panel-ai'),
-      panelUser: document.getElementById('settings-panel-user'),
-      closeBtn: document.getElementById('close-settings-modal'),
-      saveConfigBtn: document.getElementById('save-config'),
-      cancelConfigBtn: document.getElementById('cancel-config'),
-      saveSettingsBtn: document.getElementById('save-settings'),
-      cancelSettingsBtn: document.getElementById('cancel-settings'),
-      globalBtn: document.getElementById('global-settings-btn'),
-      configBtn: document.getElementById('config-btn'),
-      userSettingsBtn: document.getElementById('user-settings-btn'),
-      apiKeyInput: document.getElementById('modal-api-key'),
-      baseUrlInput: document.getElementById('modal-base-url'),
-      modelInput: document.getElementById('modal-model'),
-      userLevelSelect: document.getElementById('user-level'),
-      statusDiv: document.getElementById('config-status'),
-      statusIcon: document.getElementById('status-icon'),
-      statusText: document.getElementById('status-text')
-    };
-  }
-
-  function setActiveTab(tabName) {
-    const { tabAi, tabUser, panelAi, panelUser } = getModalElements();
-    const isUserTab = tabName === 'user';
-
-    if (tabAi) {
-      tabAi.classList.toggle('is-active', !isUserTab);
-      tabAi.setAttribute('aria-selected', String(!isUserTab));
-    }
-
-    if (tabUser) {
-      tabUser.classList.toggle('is-active', isUserTab);
-      tabUser.setAttribute('aria-selected', String(isUserTab));
-    }
-
-    if (panelAi) {
-      panelAi.hidden = isUserTab;
-      panelAi.classList.toggle('is-active', !isUserTab);
-    }
-
-    if (panelUser) {
-      panelUser.hidden = !isUserTab;
-      panelUser.classList.toggle('is-active', isUserTab);
-    }
-  }
-
-  function populateAiFields() {
-    const manager = getAiConfigManager();
-    const { apiKeyInput, baseUrlInput, modelInput } = getModalElements();
-
-    if (!manager) {
-      return;
-    }
-
-    const config = manager.config || {};
-    if (apiKeyInput) {
-      apiKeyInput.value = config.apiKey || '';
-    }
-    if (baseUrlInput) {
-      baseUrlInput.value = config.baseUrl || 'https://api.openai.com/v1';
-    }
-    if (modelInput) {
-      modelInput.value = config.model || '';
-    }
-
-    if (!aiConfigLoaded) {
-      aiConfigLoaded = true;
-      manager.loadFromBackend();
-    }
-  }
-
-  async function loadUserLevel() {
-    const { userLevelSelect } = getModalElements();
-    if (!userLevelSelect) {
-      return;
-    }
-
-    try {
-      const response = await fetch('/get_user_level');
-      const data = await response.json();
-      if (response.ok && data && data.level) {
-        userLevelSelect.value = String(data.level);
-      }
-    } catch (error) {
-      console.error('获取用户等级失败:', error);
-    }
-  }
-
-  function openSettingsModal(tabName = 'ai') {
-    const { modal } = getModalElements();
-    if (!modal || settingsModalOpen) {
-      if (modal && settingsModalOpen) {
-        setActiveTab(tabName);
-        if (tabName === 'user') {
-          loadUserLevel();
-        }
-      }
-      return;
-    }
-
-    if (closingTimer) {
-      clearTimeout(closingTimer);
-      closingTimer = null;
-    }
-    if (bodyRestoreTimer) {
-      clearTimeout(bodyRestoreTimer);
-      bodyRestoreTimer = null;
-    }
-
-    populateAiFields();
-    setActiveTab(tabName);
-    if (tabName === 'user') {
-      loadUserLevel();
-    }
-
-    modal.classList.remove('closing');
-    modal.style.display = 'flex';
-    modal.style.pointerEvents = 'auto';
-    modal.style.visibility = 'visible';
-    modal.classList.add('show');
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.overflowX = 'hidden';
-    document.body.style.overflowY = 'hidden';
-
-    settingsModalOpen = true;
-  }
-
-  function closeSettingsModal() {
-    const { modal } = getModalElements();
-    if (!modal || !settingsModalOpen) {
-      return;
-    }
-
-    settingsModalOpen = false;
-    modal.style.pointerEvents = 'none';
-    modal.classList.add('closing');
-
-    closingTimer = setTimeout(() => {
-      closingTimer = null;
-      modal.classList.remove('show');
-      modal.classList.remove('closing');
-      modal.style.display = 'none';
-      modal.style.opacity = '';
-      modal.style.transform = '';
-      modal.style.pointerEvents = '';
-      modal.style.visibility = 'hidden';
-    }, 300);
-
-    bodyRestoreTimer = setTimeout(() => {
-      bodyRestoreTimer = null;
-      document.body.style.overflow = '';
-      document.body.style.overflowX = '';
-      document.body.style.overflowY = '';
-    }, 350);
   }
 
   function showToast(message, type) {
@@ -191,7 +32,6 @@
       window.showToast(message, type);
       return;
     }
-    // 兜底：直接 console 输出，避免静默失败
     if (type === 'error') {
       console.error(message);
     } else {
@@ -213,7 +53,9 @@
 
   function updateStatusAfterSave(success, modelOrError) {
     const manager = getAiConfigManager();
-    const { statusIcon, statusText, statusDiv } = getModalElements();
+    const statusIcon = document.getElementById('status-icon');
+    const statusText = document.getElementById('status-text');
+    const statusDiv = document.getElementById('config-status');
     if (!manager || !statusIcon || !statusText) {
       return;
     }
@@ -223,10 +65,169 @@
     }
   }
 
-  // htmx 表单提交完成后，HX-Trigger 头里会带 ai-config-saved / ai-config-failed。
-  // 这里负责 toast、关弹窗、状态徽标同步、隐藏模型同步。
+  // Alpine 工厂
+  window.settingsModal = function settingsModal() {
+    return {
+      isOpen: false,
+      activeTab: 'ai',
+      isSubmitting: false,
+      aiConfigLoaded: false,
+      closeTimer: null,
+      bodyRestoreTimer: null,
+
+      init() {
+        // 让 init 阶段的 init 调用能跑：populate 字段、绑定 ESC 等
+        this._populateAiFields();
+      },
+
+      _populateAiFields() {
+        const manager = getAiConfigManager();
+        if (!manager) {
+          return;
+        }
+        const config = manager.config || {};
+        const apiKeyInput = document.getElementById('modal-api-key');
+        const baseUrlInput = document.getElementById('modal-base-url');
+        const modelInput = document.getElementById('modal-model');
+        if (apiKeyInput) {
+          apiKeyInput.value = config.apiKey || '';
+        }
+        if (baseUrlInput) {
+          baseUrlInput.value = config.baseUrl || 'https://api.openai.com/v1';
+        }
+        if (modelInput) {
+          modelInput.value = config.model || '';
+        }
+        if (!this.aiConfigLoaded) {
+          this.aiConfigLoaded = true;
+          manager.loadFromBackend();
+        }
+      },
+
+      open(tabName) {
+        const targetTab = tabName === 'user' ? 'user' : 'ai';
+        this.activeTab = targetTab;
+        if (this.isOpen) {
+          if (targetTab === 'user') {
+            this._loadUserLevel();
+          }
+          return;
+        }
+        // 取消任何正在进行的关闭动画
+        if (this.closeTimer) {
+          clearTimeout(this.closeTimer);
+          this.closeTimer = null;
+        }
+        if (this.bodyRestoreTimer) {
+          clearTimeout(this.bodyRestoreTimer);
+          this.bodyRestoreTimer = null;
+        }
+        this._populateAiFields();
+        if (targetTab === 'user') {
+          this._loadUserLevel();
+        }
+        this.isOpen = true;
+        // 锁滚动
+        document.body.style.overflow = 'hidden';
+        document.body.style.overflowX = 'hidden';
+        document.body.style.overflowY = 'hidden';
+      },
+
+      close() {
+        if (!this.isOpen) {
+          return;
+        }
+        this.isOpen = false;
+        this.closeTimer = setTimeout(() => {
+          this.closeTimer = null;
+        }, 300);
+        this.bodyRestoreTimer = setTimeout(() => {
+          this.bodyRestoreTimer = null;
+          document.body.style.overflow = '';
+          document.body.style.overflowX = '';
+          document.body.style.overflowY = '';
+        }, 350);
+      },
+
+      switchTab(tabName) {
+        const target = tabName === 'user' ? 'user' : 'ai';
+        this.activeTab = target;
+        if (target === 'user') {
+          this._loadUserLevel();
+        }
+      },
+
+      _loadUserLevel() {
+        const select = document.getElementById('user-level');
+        if (!select) {
+          return;
+        }
+        fetch('/get_user_level')
+          .then((response) => response.json())
+          .then((data) => {
+            if (data && data.level) {
+              select.value = String(data.level);
+            }
+          })
+          .catch((error) => {
+            console.error('获取用户等级失败:', error);
+          });
+      },
+
+      async saveUserSettings() {
+        const select = document.getElementById('user-level');
+        if (!select) {
+          return;
+        }
+        const level = Number.parseInt(select.value, 10);
+        if (!Number.isFinite(level)) {
+          showToast('请选择有效的用户等级', 'warning');
+          return;
+        }
+        this.isSubmitting = true;
+        try {
+          const response = await fetch('/update_user_level', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level })
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            showToast(`保存失败：${result.error || '未知错误'}`, 'error');
+            return;
+          }
+          showToast('用户设置保存成功！', 'success');
+          setTimeout(() => this.close(), 700);
+        } catch (error) {
+          console.error('保存用户设置失败:', error);
+          showToast('网络错误，请稍后重试', 'error');
+        } finally {
+          this.isSubmitting = false;
+        }
+      },
+
+      // 由 htmx:after-request 触发，自动给反馈区域添加状态。
+      handleHtmxAfterRequest(event) {
+        const xhr = event.detail && event.detail.xhr;
+        const target = event.detail && event.detail.target;
+        if (!xhr || !target) {
+          return;
+        }
+        if (target.id !== 'ai-config-feedback') {
+          return;
+        }
+        const status = xhr.status;
+        if (status >= 200 && status < 300) {
+          this.isSubmitting = false;
+        } else {
+          this.isSubmitting = false;
+        }
+      },
+    };
+  };
+
   function handleAiConfigSaveEvent(event) {
-    const detail = event && event.detail ? event.detail : {};
+    const detail = (event && event.detail) ? event.detail : {};
     const message = detail.message || '';
     const succeeded = !!(event.detail && event.detail.succeeded);
 
@@ -235,7 +236,11 @@
       syncHiddenModel(modelInput ? modelInput.value : '');
       updateStatusAfterSave(true, modelInput ? modelInput.value : '');
       showToast(message || 'AI 配置已保存', 'success');
-      setTimeout(closeSettingsModal, 900);
+      // Alpine 实例在 document 上：x-data 元素就是 #settings-modal
+      const modalEl = document.getElementById('settings-modal');
+      if (modalEl && modalEl._x_dataStack && modalEl._x_dataStack[0]) {
+        setTimeout(() => modalEl._x_dataStack[0].close(), 900);
+      }
     } else {
       updateStatusAfterSave(false, message);
       showToast(`保存失败：${message || '未知错误'}`, 'error');
@@ -243,7 +248,6 @@
   }
 
   function attachHtmxListeners() {
-    // htmx 会把 HX-Trigger 派发为同名 DOM 事件，事件 detail 来自服务端 json
     document.addEventListener('ai-config-saved', function (event) {
       handleAiConfigSaveEvent({ detail: Object.assign({ succeeded: true }, event.detail || {}) });
     });
@@ -252,144 +256,72 @@
     });
   }
 
-  async function saveUserSettings() {
-    const { userLevelSelect, saveSettingsBtn } = getModalElements();
-    if (!userLevelSelect || !saveSettingsBtn) {
-      return;
+  // 兼容老的 window.openSettingsModal 入口
+  function findAlpineModal() {
+    const modalEl = document.getElementById('settings-modal');
+    if (modalEl && modalEl._x_dataStack && modalEl._x_dataStack[0]) {
+      return modalEl._x_dataStack[0];
     }
-
-    const level = Number.parseInt(userLevelSelect.value, 10);
-    if (!Number.isFinite(level)) {
-      showToast('请选择有效的用户等级', 'warning');
-      return;
-    }
-
-    const originalText = saveSettingsBtn.innerHTML;
-    saveSettingsBtn.innerHTML = '⏳ 保存中...';
-    saveSettingsBtn.disabled = true;
-
-    try {
-      const response = await fetch('/update_user_level', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ level })
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        showToast(`保存失败：${result.error || '未知错误'}`, 'error');
-        return;
-      }
-
-      showToast('用户设置保存成功！', 'success');
-      setTimeout(closeSettingsModal, 700);
-    } catch (error) {
-      console.error('保存用户设置失败:', error);
-      showToast('网络错误，请稍后重试', 'error');
-    } finally {
-      saveSettingsBtn.innerHTML = originalText;
-      saveSettingsBtn.disabled = false;
-    }
+    return null;
   }
 
-  function bindEvents() {
-    const {
-      modal,
-      globalBtn,
-      configBtn,
-      userSettingsBtn,
-      closeBtn,
-      saveConfigBtn,
-      cancelConfigBtn,
-      saveSettingsBtn,
-      cancelSettingsBtn,
-      tabAi,
-      tabUser
-    } = getModalElements();
-
-    if (!modal) {
+  function openSettingsModal(tabName) {
+    const instance = findAlpineModal();
+    if (!instance) {
+      // Alpine 还没初始化：直接显示 modal（不依赖状态机），等 Alpine 就绪再接管
+      const modalEl = document.getElementById('settings-modal');
+      if (modalEl) {
+        modalEl.classList.add('show');
+        modalEl.style.display = 'flex';
+      }
       return;
     }
+    instance.open(tabName);
+  }
 
-    if (globalBtn) {
-      globalBtn.addEventListener('click', () => openSettingsModal('ai'));
-    }
-
-    if (configBtn) {
-      configBtn.addEventListener('click', () => openSettingsModal('ai'));
-    }
-
-    if (userSettingsBtn) {
-      userSettingsBtn.addEventListener('click', () => openSettingsModal('user'));
-    }
-
-    if (closeBtn) {
-      closeBtn.addEventListener('click', closeSettingsModal);
-    }
-
-    if (cancelConfigBtn) {
-      cancelConfigBtn.addEventListener('click', closeSettingsModal);
-    }
-
-    if (cancelSettingsBtn) {
-      cancelSettingsBtn.addEventListener('click', closeSettingsModal);
-    }
-
-    if (saveConfigBtn) {
-      // Stage 3a: AI 配置改用 htmx <form hx-post> 自提交，不再走 saveAiConfig()。
-      // 按钮本身是 type="submit"，htmx 会负责 fetch + 响应片段 swap。
-      // 业务反馈（toast / 关弹窗 / 状态徽标）由 document 级 ai-config-* 事件处理。
-      saveConfigBtn.setAttribute('type', 'submit');
-    }
-
-    if (saveSettingsBtn) {
-      saveSettingsBtn.addEventListener('click', saveUserSettings);
-    }
-
-    if (tabAi) {
-      tabAi.addEventListener('click', () => setActiveTab('ai'));
-    }
-
-    if (tabUser) {
-      tabUser.addEventListener('click', async () => {
-        setActiveTab('user');
-        await loadUserLevel();
-      });
-    }
-
-    if (outsideClickHandler) {
-      modal.removeEventListener('click', outsideClickHandler);
-    }
-    outsideClickHandler = function (event) {
-      if (event.target === modal) {
-        closeSettingsModal();
+  function closeSettingsModal() {
+    const instance = findAlpineModal();
+    if (!instance) {
+      const modalEl = document.getElementById('settings-modal');
+      if (modalEl) {
+        modalEl.classList.remove('show');
+        modalEl.style.display = 'none';
       }
-    };
-    modal.addEventListener('click', outsideClickHandler);
-
-    if (escapeKeyHandler) {
-      document.removeEventListener('keydown', escapeKeyHandler);
+      return;
     }
-    escapeKeyHandler = function (event) {
-      if (event.key === 'Escape' && settingsModalOpen) {
-        closeSettingsModal();
+    instance.close();
+  }
+
+  function setSettingsTab(tabName) {
+    const instance = findAlpineModal();
+    if (!instance) {
+      return;
+    }
+    instance.switchTab(tabName);
+  }
+
+  function bindTriggerButtons() {
+    const triggers = [
+      { id: 'global-settings-btn', tab: 'ai' },
+      { id: 'config-btn', tab: 'ai' },
+      { id: 'user-settings-btn', tab: 'user' }
+    ];
+    triggers.forEach(({ id, tab }) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('click', () => openSettingsModal(tab));
       }
-    };
-    document.addEventListener('keydown', escapeKeyHandler);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     if (window.AIConfigManager && !window.aiConfigManager) {
       window.aiConfigManager = new AIConfigManager();
     }
-
-    bindEvents();
     attachHtmxListeners();
-
+    bindTriggerButtons();
     window.openSettingsModal = openSettingsModal;
     window.closeSettingsModal = closeSettingsModal;
-    window.setSettingsTab = setActiveTab;
+    window.setSettingsTab = setSettingsTab;
   });
 })();

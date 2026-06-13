@@ -1,18 +1,48 @@
 {% if user %}
-<div id="settings-modal" class="modal" aria-hidden="true">
-  <div class="modal-content settings-modal-content">
+<div id="settings-modal"
+     class="modal"
+     aria-hidden="true"
+     x-data="settingsModal()"
+     x-bind:aria-hidden="!isOpen"
+     x-on:keydown.escape.window="if (isOpen) close()"
+     x-on:htmx:after-request.window="handleHtmxAfterRequest($event)">
+  <div class="modal-content settings-modal-content"
+       x-show="isOpen"
+       x-transition:enter="modal-enter"
+       x-transition:enter-start="modal-enter-start"
+       x-transition:enter-end="modal-enter-end"
+       x-transition:leave="modal-leave"
+       x-transition:leave-start="modal-leave-start"
+       x-transition:leave-end="modal-leave-end"
+       x-on:click.outside="close()">
     <div class="modal-header">
       <h3>设置</h3>
-      <button id="close-settings-modal" class="btn-close" type="button" aria-label="关闭设置">✕</button>
+      <button class="btn-close" type="button" aria-label="关闭设置" x-on:click="close()">✕</button>
     </div>
 
     <div class="settings-tabs" role="tablist" aria-label="设置选项">
-      <button id="settings-tab-ai" class="settings-tab is-active" type="button" data-settings-tab="ai" role="tab" aria-selected="true">AI配置</button>
-      <button id="settings-tab-user" class="settings-tab" type="button" data-settings-tab="user" role="tab" aria-selected="false">用户设置</button>
+      <button class="settings-tab"
+              type="button"
+              data-settings-tab="ai"
+              role="tab"
+              x-bind:aria-selected="activeTab === 'ai'"
+              x-bind:class="activeTab === 'ai' ? 'settings-tab is-active' : 'settings-tab'"
+              x-on:click="switchTab('ai')">AI配置</button>
+      <button class="settings-tab"
+              type="button"
+              data-settings-tab="user"
+              role="tab"
+              x-bind:aria-selected="activeTab === 'user'"
+              x-bind:class="activeTab === 'user' ? 'settings-tab is-active' : 'settings-tab'"
+              x-on:click="switchTab('user')">用户设置</button>
     </div>
 
     <div class="modal-body settings-modal-body">
-      <section id="settings-panel-ai" class="settings-panel is-active" data-settings-panel="ai" role="tabpanel" aria-labelledby="settings-tab-ai">
+      <section class="settings-panel"
+               data-settings-panel="ai"
+               role="tabpanel"
+               x-show="activeTab === 'ai'"
+               x-bind:hidden="activeTab !== 'ai'">
         <div class="settings-section-header">
           <div class="settings-section-header__text">
             <h4>🤖 AI配置</h4>
@@ -44,8 +74,10 @@
           </div>
 
           <div class="settings-panel__footer">
-            <button type="submit" id="save-config" class="btn-primary">测试并保存</button>
-            <button id="cancel-config" class="btn-secondary" type="button">关闭</button>
+            <button type="submit" id="save-config" class="btn-primary"
+                    x-bind:disabled="isSubmitting"
+                    x-text="isSubmitting ? '保存中…' : '测试并保存'">测试并保存</button>
+            <button id="cancel-config" class="btn-secondary" type="button" x-on:click="close()">关闭</button>
           </div>
 
           {# htmx 把响应片段 swap 进这里。HX-Trigger 事件：ai-config-saved / ai-config-failed #}
@@ -53,7 +85,11 @@
         </form>
       </section>
 
-      <section id="settings-panel-user" class="settings-panel" data-settings-panel="user" role="tabpanel" aria-labelledby="settings-tab-user" hidden>
+      <section class="settings-panel"
+               data-settings-panel="user"
+               role="tabpanel"
+               x-show="activeTab === 'user'"
+               x-bind:hidden="activeTab !== 'user'">
         <div class="config-header">
           <div>
             <h4>👤 用户设置</h4>
@@ -75,8 +111,11 @@
         </div>
 
         <div class="settings-panel__footer">
-          <button id="save-settings" class="btn-primary" type="button">保存设置</button>
-          <button id="cancel-settings" class="btn-secondary" type="button">关闭</button>
+          <button id="save-settings" class="btn-primary" type="button"
+                  x-on:click="saveUserSettings()"
+                  x-bind:disabled="isSubmitting"
+                  x-text="isSubmitting ? '保存中…' : '保存设置'">保存设置</button>
+          <button id="cancel-settings" class="btn-secondary" type="button" x-on:click="close()">关闭</button>
         </div>
       </section>
     </div>
