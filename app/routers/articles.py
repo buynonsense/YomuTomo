@@ -379,18 +379,42 @@ async def vocabulary_book(request: Request, status: str = Query(None, descriptio
 async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
+        if getattr(request.state, "htmx", False):
+            return HTMLResponse('<form class="vocab-toggle-form" disabled></form>', status_code=401)
         return {"success": False, "error": "未登录"}
 
-    try:
-        payload = await request.json()
-    except Exception:
-        return {"success": False, "error": "请求体格式不正确"}
+    is_htmx = getattr(request.state, "htmx", False)
 
-    word = payload.get('word', '')
-    pronunciation = payload.get('pronunciation')
-    meaning = payload.get('meaning')
-    mastered = bool(payload.get('mastered', True))
-    article_id = payload.get('article_id')
+    # Stage 3b: htmx 提交走 form-encoded；其它客户端维持 JSON 协议不变。
+    word = ""
+    pronunciation = None
+    meaning = None
+    article_id = None
+    mastered = True
+
+    if is_htmx:
+        form = await request.form()
+        word = (form.get("word") or "").strip()
+        pronunciation = form.get("pronunciation") or None
+        meaning = form.get("meaning") or None
+        article_id_raw = form.get("article_id")
+        try:
+            article_id = int(article_id_raw) if article_id_raw not in (None, "", "None") else None
+        except (TypeError, ValueError):
+            article_id = None
+        # current_mastered=1 表示已掌握 → 这次点击要"取消掌握"
+        current_raw = form.get("current_mastered", "0")
+        mastered = False if str(current_raw) in ("1", "true", "True") else True
+    else:
+        try:
+            payload = await request.json()
+        except Exception:
+            return {"success": False, "error": "请求体格式不正确"}
+        word = (payload.get("word") or "").strip()
+        pronunciation = payload.get("pronunciation")
+        meaning = payload.get("meaning")
+        mastered = bool(payload.get("mastered", True))
+        article_id = payload.get("article_id")
 
     try:
         entry = toggle_vocabulary_status(
@@ -402,18 +426,83 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
             mastered=mastered,
             article_id=article_id,
         )
-        return {
-            "success": True,
-            "word": entry.word,
-            "status": entry.status,
-            "mastered": entry.status == 'mastered',
-        }
     except ValueError as e:
         db.rollback()
+        if is_htmx:
+            return _vocab_toggle_form_response(
+                request,
+                word=word,
+                pronunciation=pronunciation,
+                meaning=meaning,
+                article_id=article_id,
+                current_mastered=1 if mastered else 0,
+                error=str(e),
+            )
         return {"success": False, "error": str(e)}
     except Exception as e:
         db.rollback()
+        if is_htmx:
+            return _vocab_toggle_form_response(
+                request,
+                word=word,
+                pronunciation=pronunciation,
+                meaning=meaning,
+                article_id=article_id,
+                current_mastered=1 if mastered else 0,
+                error=f"保存失败: {e}",
+            )
         return {"success": False, "error": f"保存失败: {str(e)}"}
+
+    if is_htmx:
+        return _vocab_toggle_form_response(
+            request,
+            word=entry.word,
+            pronunciation=pronunciation,
+            meaning=meaning,
+            article_id=article_id,
+            current_mastered=1 if entry.status == "mastered" else 0,
+        )
+    return {
+        "success": True,
+        "word": entry.word,
+        "status": entry.status,
+        "mastered": entry.status == 'mastered',
+    }
+
+
+def _vocab_toggle_form_response(
+    request: Request,
+    *,
+    word: str,
+    pronunciation: Optional[str],
+    meaning: Optional[str],
+    article_id: Optional[int],
+    current_mastered: int,
+    error: str = "",
+):
+    """返回生词 toggle 的 htmx 片段，附带 HX-Trigger 事件供前端同步父级 class。"""
+    templates = create_templates("templates")
+    response = templates.TemplateResponse(
+        request,
+        "partials/_vocab_toggle_form.html",
+        {
+            "word": word,
+            "pronunciation": pronunciation,
+            "meaning": meaning,
+            "article_id": article_id,
+            "current_mastered": current_mastered,
+        },
+    )
+    trigger: dict = {
+        "vocab-toggled": {
+            "word": word,
+            "mastered": bool(int(current_mastered)),
+        }
+    }
+    if error:
+        trigger["vocab-toggle-error"] = {"word": word, "message": error}
+    response.headers["HX-Trigger"] = json.dumps(trigger)
+    return response
 
 
 @router.post("/articles/{article_id}/delete", summary="删除文章")

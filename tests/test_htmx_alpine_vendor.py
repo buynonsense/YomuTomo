@@ -596,3 +596,282 @@ def test_save_ai_config_non_htmx_request_still_returns_json(client, db_session, 
     # 也没有 htmx 反馈片段特征
     assert "ai-config-feedback__inner" not in body
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 3b: 生词掌握 toggle → hx-post 片段
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_vocab_toggle_partial_form_uses_htmx_and_carries_state():
+    """toggle 片段必须包含 hx-post 表单，且 current_mastered/word 字段都要带上。"""
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader("templates"))
+    tpl = env.get_template("partials/_vocab_toggle_form.html")
+    body = tpl.render(
+        word="日本語",
+        pronunciation="にほんご",
+        meaning="日语",
+        article_id=42,
+        current_mastered=0,
+    )
+    assert 'class="vocab-toggle-form"' in body
+    assert 'hx-post="/vocabulary/toggle"' in body
+    assert 'hx-swap="outerHTML"' in body
+    assert 'hx-target="this"' in body
+    assert 'name="word" value="日本語"' in body
+    assert 'name="pronunciation" value="にほんご"' in body
+    assert 'name="meaning" value="日语"' in body
+    assert 'name="article_id" value="42"' in body
+    assert 'name="current_mastered" value="0"' in body
+    # 当前未掌握 → 显示"已掌握"
+    assert ">已掌握<" in body
+
+    body_mastered = tpl.render(
+        word="日本語",
+        pronunciation="にほんご",
+        meaning="日语",
+        article_id=42,
+        current_mastered=1,
+    )
+    # 当前已掌握 → 显示"取消掌握" + 按钮带 is-mastered
+    assert ">取消掌握<" in body_mastered
+    assert "is-mastered" in body_mastered
+
+
+def test_reading_vocab_uses_htmx_form_for_toggle():
+    reading = (REPO_ROOT / "templates" / "reading.html").read_text(encoding="utf-8")
+    assert 'class="vocab-toggle-form"' in reading
+    assert 'hx-post="/vocabulary/toggle"' in reading
+    # 必须使用 hx-swap="outerHTML" + hx-target="this"，否则按钮无法原位替换
+    assert 'hx-swap="outerHTML"' in reading
+    assert 'hx-target="this"' in reading
+
+
+def test_vocabulary_page_uses_htmx_form_for_toggle():
+    vocab = (REPO_ROOT / "templates" / "vocabulary.html").read_text(encoding="utf-8")
+    assert 'class="vocab-toggle-form"' in vocab
+    assert 'hx-post="/vocabulary/toggle"' in vocab
+    assert 'hx-swap="outerHTML"' in vocab
+    assert 'hx-target="this"' in vocab
+
+
+def test_reading_js_drops_manual_toggle_chain():
+    """旧 fetch(JSON)+手改 class 链路已删除；新链路只保留 speak click + vocab-toggled 监听。"""
+    js = (REPO_ROOT / "static" / "js" / "pages" / "reading.js").read_text(encoding="utf-8")
+    # 函数定义 / 调用都已删除（注释里出现只是文档说明）
+    assert "toggleVocabMastered(button)" not in js
+    assert "persistVocabularyStatus(payload)" not in js
+    # click 分支只剩 speak
+    assert "speakVocabWord" in js
+    # 新链路：vocab-toggled 事件 + .is-mastered 同步
+    assert "vocab-toggled" in js
+    assert "is-mastered" in js
+    assert "bindVocabToggleSync" in js
+    # cssEscape 防护：含特殊字符的 word 不会让 querySelectorAll 抛错
+    assert "cssEscape" in js
+
+
+def test_vocab_toggle_endpoint_htmx_returns_partial(client, db_session, monkeypatch):
+    """htmx 请求 → 服务端返回 toggle form 片段 + HX-Trigger: vocab-toggled。"""
+    from app.model.models import User, Article, VocabularyEntry
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3b-ok@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="sk-test",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt-4o-mini",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    article = Article(
+        user_id=user.id,
+        title="t",
+        original="x",
+        translation="y",
+        ruby_html="<ruby>x</ruby>",
+        vocab_json="[]",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3b-ok@example.com", "password": "secret123"})
+        # 当前未掌握 → 这次点击要"标记为已掌握"
+        resp = c.post(
+            "/vocabulary/toggle",
+            data={
+                "word": "日本語",
+                "pronunciation": "にほんご",
+                "meaning": "日语",
+                "article_id": str(article.id),
+                "current_mastered": "0",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    # 返回的是 form 片段
+    assert 'class="vocab-toggle-form"' in body
+    # 翻转后应当显示"取消掌握"
+    assert ">取消掌握<" in body
+    assert 'value="1"' in body  # current_mastered 现在是 1
+
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    assert trigger["vocab-toggled"]["word"] == "日本語"
+    assert trigger["vocab-toggled"]["mastered"] is True
+
+    # 落库
+    entry = db_session.query(VocabularyEntry).filter_by(user_id=user.id, word="日本語").first()
+    assert entry is not None
+    assert entry.status == "mastered"
+
+
+def test_vocab_toggle_endpoint_htmx_toggles_back(client, db_session, monkeypatch):
+    """已掌握 → 再次 toggle 应当回到 unmastered。"""
+    from app.model.models import User, Article, VocabularyEntry
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3b-back@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="sk-test",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt-4o-mini",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    article = Article(
+        user_id=user.id,
+        title="t",
+        original="x",
+        translation="y",
+        ruby_html="<ruby>x</ruby>",
+        vocab_json="[]",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3b-back@example.com", "password": "secret123"})
+        # 第一次：标记为已掌握
+        c.post(
+            "/vocabulary/toggle",
+            data={"word": "学校", "current_mastered": "0", "article_id": str(article.id)},
+            headers={"HX-Request": "true"},
+        )
+        # 第二次：取消掌握
+        resp = c.post(
+            "/vocabulary/toggle",
+            data={"word": "学校", "current_mastered": "1", "article_id": str(article.id)},
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert ">已掌握<" in body
+    assert 'value="0"' in body
+
+    entry = db_session.query(VocabularyEntry).filter_by(user_id=user.id, word="学校").first()
+    assert entry is not None
+    assert entry.status != "mastered"
+
+
+def test_vocab_toggle_endpoint_non_htmx_returns_json(client, db_session, monkeypatch):
+    """非 htmx 请求维持 JSON 协议，不破坏其它客户端。"""
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user = User(
+        email="stage3b-json@example.com",
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="sk-test",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt-4o-mini",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3b-json@example.com", "password": "secret123"})
+        resp = c.post(
+            "/vocabulary/toggle",
+            json={"word": "本", "mastered": True, "article_id": None},
+        )
+
+    assert resp.status_code == 200
+    body = resp.text
+    assert '"success":true' in body
+    assert '"mastered":true' in body
+    # 不是 form 片段
+    assert "vocab-toggle-form" not in body
+
