@@ -31,4 +31,7 @@
 </nav>
 
 {% include "partials/global_notifications_panel.html" %}
+{# 通用增强：htmx 接管与服务端的来回（轮询/片段/表单），Alpine 接管纯客户端状态机。#}
+<script defer src="/static/vendor/htmx.min.js"></script>
+<script defer src="/static/vendor/alpine.min.js"></script>
 <script src="/static/js/modules/notifications.js"></script>
