@@ -875,3 +875,254 @@ def test_vocab_toggle_endpoint_non_htmx_returns_json(client, db_session, monkeyp
     # 不是 form 片段
     assert "vocab-toggle-form" not in body
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 3c: 文章重命名 / 删除 → htmx
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_dashboard_uses_htmx_for_rename_and_delete():
+    """dashboard.html 中文章操作面板的表单必须用 htmx hx-swap=none。"""
+    dash = (REPO_ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    assert 'id="rename-form"' in dash
+    assert 'id="delete-form"' in dash
+    # 都用 hx-swap="none"，避免 navigate
+    assert dash.count('hx-swap="none"') >= 2
+    # 删除要有 hx-confirm
+    assert 'hx-confirm=' in dash
+    # 没有 onsubmit="return confirm(...)" 旧依赖
+    assert "onsubmit=\"return confirm('" not in dash
+    # 事件监听
+    assert "'article-renamed'" in dash
+    assert "'article-deleted'" in dash
+    # 动态设置 hx-post
+    assert "setAttribute('hx-post'" in dash
+
+
+def _stage3c_user_and_article(db_session, *, email: str, title: str = "旧标题"):
+    from app.model.models import User, Article
+
+    user = User(
+        email=email,
+        password_hash="hashed:secret123",
+        level=1,
+        openai_api_key="sk-test",
+        openai_base_url="https://api.example.com/v1",
+        openai_model="gpt-4o-mini",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    article = Article(
+        user_id=user.id,
+        title=title,
+        original="x",
+        translation="y",
+        ruby_html="<ruby>x</ruby>",
+        vocab_json="[]",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    return user, article
+
+
+def test_article_delete_htmx_returns_event_and_removes_row(client, db_session, monkeypatch):
+    from app.model.models import Article
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user, article = _stage3c_user_and_article(db_session, email="stage3c-del@example.com")
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid) if False else db.get(type(user), uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3c-del@example.com", "password": "secret123"})
+        resp = c.post(
+            f"/articles/{article.id}/delete",
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    assert trigger["article-deleted"]["article_id"] == article.id
+
+    # 落库：文章已删
+    assert db_session.query(Article).filter_by(id=article.id).first() is None
+
+
+def test_article_delete_non_htmx_still_redirects(client, db_session, monkeypatch):
+    from app.model.models import Article, User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user, article = _stage3c_user_and_article(db_session, email="stage3c-del-redir@example.com")
+    assert user is not None  # 防止未使用告警
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3c-del-redir@example.com", "password": "secret123"})
+        resp = c.post(f"/articles/{article.id}/delete", follow_redirects=False)  # 无 HX-Request
+
+    assert resp.status_code == 303
+    assert resp.headers.get("location", "").endswith("/dashboard")
+    # 仍然删除了
+    assert db_session.query(Article).filter_by(id=article.id).first() is None
+
+
+def test_article_rename_htmx_returns_event_and_updates_title(client, db_session, monkeypatch):
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user, article = _stage3c_user_and_article(db_session, email="stage3c-rename@example.com", title="旧标题")
+    assert user is not None  # 防止未使用告警
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3c-rename@example.com", "password": "secret123"})
+        resp = c.post(
+            f"/articles/{article.id}/rename",
+            data={"title": "新标题"},
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    assert trigger["article-renamed"]["article_id"] == article.id
+    assert trigger["article-renamed"]["title"] == "新标题"
+
+    # 落库
+    db_session.refresh(article)
+    assert article.title == "新标题"
+
+
+def test_article_rename_non_htmx_still_redirects(client, db_session, monkeypatch):
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user, article = _stage3c_user_and_article(db_session, email="stage3c-rename-redir@example.com", title="旧")
+    assert user is not None  # 防止未使用告警
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3c-rename-redir@example.com", "password": "secret123"})
+        resp = c.post(f"/articles/{article.id}/rename", data={"title": "新"}, follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert resp.headers.get("location", "").endswith("/dashboard")
+    db_session.refresh(article)
+    assert article.title == "新"
+
+
+def test_article_rename_blank_title_does_not_change_row(client, db_session, monkeypatch):
+    from app.model.models import User
+    from app.routers import articles as articles_router
+    from app.routers import auth, pages
+    from app.services import services as service_module
+
+    monkeypatch.setattr(auth, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+    monkeypatch.setattr(auth, "is_legacy_bcrypt_hash", lambda hashed: False)
+    monkeypatch.setattr(service_module, "hash_password", lambda password: f"hashed:{password}")
+    monkeypatch.setattr(service_module, "verify_password", lambda password, hashed: hashed == f"hashed:{password}")
+
+    user, article = _stage3c_user_and_article(db_session, email="stage3c-rename-blank@example.com", title="保留")
+    assert user is not None  # 防止未使用告警
+
+    def current_user(request, db):
+        uid = request.session.get("user_id")
+        if not uid:
+            return None
+        return db.get(User, uid)
+
+    monkeypatch.setattr(pages, "get_current_user", current_user)
+    monkeypatch.setattr(auth, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "get_current_user", current_user)
+    monkeypatch.setattr(articles_router, "require_login", current_user)
+
+    with client as c:
+        c.post("/login", data={"email": "stage3c-rename-blank@example.com", "password": "secret123"})
+        resp = c.post(
+            f"/articles/{article.id}/rename",
+            data={"title": "   "},
+            headers={"HX-Request": "true"},
+        )
+
+    assert resp.status_code == 200
+    db_session.refresh(article)
+    # 空白 title 不会覆盖原标题
+    assert article.title == "保留"
+    import json as _json
+
+    trigger = _json.loads(resp.headers["hx-trigger"])
+    # 事件里带的 title 仍是原标题，前端无需回滚
+    assert trigger["article-renamed"]["title"] == "保留"
+
