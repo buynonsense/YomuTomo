@@ -115,6 +115,7 @@
             <div class="toolbar-group">
               <span class="toolbar-label">全文朗读</span>
               <div class="toolbar-actions">
+                <button id="tts-preload-btn" class="btn-secondary" type="button" title="一次性预生成全部句子并写入本地缓存，切换页面后仍可秒开">⬇️ 加载语音</button>
                 <button id="tts-play-btn" class="btn-record" type="button">🔈 播放全文</button>
                 <button id="tts-stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止朗读</button>
               </div>
@@ -124,6 +125,10 @@
             <button id="record-btn" class="btn-record" type="button">▶️ 开始录音</button>
             <button id="stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止录音</button>
             <button id="export-pdf-btn" class="btn-export" type="button">📄 导出PDF</button>
+          </div>
+          <div id="tts-preload-progress" class="tts-preload-progress" hidden>
+            <div class="tts-preload-progress__bar"><div id="tts-preload-progress-fill" class="tts-preload-progress__fill"></div></div>
+            <span id="tts-preload-progress-text" class="tts-preload-progress__text">准备中…</span>
           </div>
           <div id="result" class="result-display"></div>
           <div id="evaluation-detail" class="evaluation-detail" hidden>
@@ -150,6 +155,7 @@
     <script src="/static/js/modules/speech-recognition.js"></script>
     <script src="/static/js/modules/text-highlight.js"></script>
     <script src="/static/js/modules/tts-word-highlighter.js"></script>
+    <script src="/static/js/modules/tts-batch-loader.js"></script>
     <script src="/static/js/modules/furigana-filter.js"></script>
     <script src="/static/js/modules/pdf-export.js"></script>
     <script src="/static/js/common.js"></script>
