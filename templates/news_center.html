@@ -102,18 +102,32 @@
             </div>
           {% endif %}
 
-          <div id="news-selection-toolbar" class="news-selection-toolbar" hidden>
+          <div id="news-selection-toolbar"
+               class="news-selection-toolbar"
+               role="region"
+               aria-label="批量选择工具栏"
+               x-data="newsSelection()"
+               x-bind:hidden="count === 0"
+               x-on:news:selection-changed.window="count = $event.detail.count">
             <div class="news-selection-toolbar__count">
-              已选 <span id="news-selection-count">0</span> 条
+              已选 <span id="news-selection-count" x-text="count">0</span> 条
             </div>
             <div class="news-selection-toolbar__actions">
-              <button type="button" id="news-selection-clear" class="btn-secondary">清空选择</button>
+              <button type="button"
+                      id="news-selection-clear"
+                      class="btn-secondary"
+                      x-on:click="clear()"
+                      x-bind:disabled="count === 0 || isSubmitting">清空选择</button>
               <div class="btn-loading-shell">
                 <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
                   <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
                 </svg>
-                <button type="button" id="news-selection-submit" class="btn-primary btn-with-loading-ring">
-                  <span class="btn-label">加入爬取队列</span>
+                <button type="button"
+                        id="news-selection-submit"
+                        class="btn-primary btn-with-loading-ring"
+                        x-on:click="submit()"
+                        x-bind:disabled="count === 0 || isSubmitting">
+                  <span class="btn-label" x-text="submitLabel">加入爬取队列</span>
                 </button>
               </div>
             </div>
