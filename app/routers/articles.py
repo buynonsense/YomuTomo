@@ -509,11 +509,21 @@ def _vocab_toggle_form_response(
 async def delete_article(article_id: int, request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
+        if getattr(request.state, "htmx", False):
+            return HTMLResponse(status_code=401)
         return RedirectResponse(url="/login", status_code=303)
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
     if article:
         db.delete(article)
         db.commit()
+
+    if getattr(request.state, "htmx", False):
+        # Stage 3c: htmx 提交时不再 navigate，由 dashboard 监听 article-deleted 事件移除卡片
+        response = HTMLResponse("")
+        response.headers["HX-Trigger"] = json.dumps(
+            {"article-deleted": {"article_id": article_id}}
+        )
+        return response
     return RedirectResponse(url="/dashboard", status_code=303)
 
 
@@ -521,11 +531,24 @@ async def delete_article(article_id: int, request: Request, db: Session = Depend
 async def rename_article(article_id: int, request: Request, title: str = Form(...), db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
+        if getattr(request.state, "htmx", False):
+            return HTMLResponse(status_code=401)
         return RedirectResponse(url="/login", status_code=303)
+
+    new_title = (title or "").strip()
     article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
-    if article and title.strip():
-        article.title = title.strip()
+    if article and new_title:
+        article.title = new_title
         db.commit()
+    final_title = new_title if (article and new_title) else (article.title if article else "")
+
+    if getattr(request.state, "htmx", False):
+        # Stage 3c: htmx 提交时返回空 body + article-renamed 事件，前端更新卡片标题
+        response = HTMLResponse("")
+        response.headers["HX-Trigger"] = json.dumps(
+            {"article-renamed": {"article_id": article_id, "title": final_title}}
+        )
+        return response
     return RedirectResponse(url="/dashboard", status_code=303)
 
 

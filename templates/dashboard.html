@@ -72,11 +72,15 @@
           <span id="ap-title" class="ap-title">标题</span>
           <button class="ap-close" type="button" onclick="closeActionPanel()">✕</button>
         </div>
-        <form id="rename-form" method="post" class="ap-row">
+        {# Stage 3c: 重命名 / 删除改用 htmx 自提交，服务端只发 HX-Trigger 事件。 #}
+        <form id="rename-form" class="ap-row"
+              hx-swap="none">
           <input type="text" name="title" id="ap-input" placeholder="新标题" />
           <button type="submit" class="btn-primary" style="white-space:nowrap;">保存</button>
         </form>
-        <form id="delete-form" method="post" onsubmit="return confirm('确定删除该文章吗？');" class="ap-row">
+        <form id="delete-form" class="ap-row"
+              hx-swap="none"
+              hx-confirm="确定删除该文章吗？">
           <button type="submit" class="btn-danger" style="width:100%;">删除文章</button>
         </form>
       </div>
@@ -92,8 +96,13 @@
         document.getElementById('ap-title').textContent = title;
         const renameForm = document.getElementById('rename-form');
         const deleteForm = document.getElementById('delete-form');
-        renameForm.action = '/articles/' + id + '/rename';
-        deleteForm.action = '/articles/' + id + '/delete';
+        // Stage 3c: 改用 hx-post + hx-swap="none"，form 仍需要 action 用于 htmx 推断 URL
+        renameForm.setAttribute('hx-post', '/articles/' + id + '/rename');
+        deleteForm.setAttribute('hx-post', '/articles/' + id + '/delete');
+        if (window.htmx && typeof window.htmx.process === 'function') {
+          window.htmx.process(renameForm);
+          window.htmx.process(deleteForm);
+        }
         document.getElementById('ap-input').value = title;
         overlay.style.display='flex';
         setTimeout(()=>overlay.classList.add('show'),10);
@@ -103,6 +112,36 @@
         overlay.classList.remove('show');
         setTimeout(()=>overlay.style.display='none',200);
       }
+      // Stage 3c: 监听服务端 HX-Trigger 派发的 article-renamed / article-deleted
+      document.addEventListener('article-renamed', function (event) {
+        const detail = (event && event.detail) || {};
+        const id = detail.article_id;
+        const title = detail.title;
+        if (!id) return;
+        const bubble = document.querySelector(`.article-bubble[data-article-id="${id}"]`);
+        if (bubble) {
+          bubble.dataset.title = title || '';
+          const titleEl = bubble.querySelector('.bubble-title');
+          if (titleEl) {
+            titleEl.textContent = title || '';
+          }
+        }
+        const apTitle = document.getElementById('ap-title');
+        if (apTitle) {
+          apTitle.textContent = title || '';
+        }
+        closeActionPanel();
+      });
+      document.addEventListener('article-deleted', function (event) {
+        const detail = (event && event.detail) || {};
+        const id = detail.article_id;
+        if (!id) return;
+        const bubble = document.querySelector(`.article-bubble[data-article-id="${id}"]`);
+        if (bubble) {
+          bubble.remove();
+        }
+        closeActionPanel();
+      });
       document.addEventListener('click', (e)=>{
         const overlay = document.getElementById('action-panel-overlay');
         const menuBtn = e.target.closest('.bubble-menu-btn');
