@@ -1186,3 +1186,71 @@ def test_settings_modal_drops_legacy_imperative_state():
     # 旧的 setActiveTab 顶层函数也消失了
     assert "function setActiveTab" not in js
 
+
+# ---------------------------------------------------------------------------
+# Stage 4b: 生词翻卡改 Alpine 局部状态机
+# ---------------------------------------------------------------------------
+
+
+def test_vocab_review_template_uses_alpine_x_data():
+    """Stage 4b: 复习面板用 Alpine x-data 接管状态。"""
+    template = (REPO_ROOT / "templates" / "vocabulary.html").read_text(encoding="utf-8")
+    assert 'x-data="vocabReview()"' in template
+    # 翻牌状态绑到 data-flipped
+    assert 'x-bind:data-flipped="flipped ? \'1\' : \'0\'"' in template
+    # 词条/释义/进度/状态走派生 getter
+    assert 'x-text="frontText"' in template
+    assert 'x-html="backHtml"' in template
+    assert 'x-text="progressText"' in template
+    assert 'x-text="stateText"' in template
+    assert 'x-text="toggleLabel"' in template
+    # 显隐由 panelClass getter 控制
+    assert 'x-bind:class="panelClass"' in template
+    # ESC 关闭
+    assert 'x-on:keydown.escape' in template
+
+
+def test_vocab_review_js_exposes_alpine_factory():
+    """Stage 4b: vocabulary.js 注册 window.vocabReview 工厂。"""
+    js = (REPO_ROOT / "static" / "js" / "pages" / "vocabulary.js").read_text(encoding="utf-8")
+    assert "window.vocabReview" in js
+    # 工厂方法
+    assert "open()" in js
+    assert "close()" in js
+    assert "flip()" in js
+    assert "move(" in js
+    assert "shuffle()" in js
+    assert "toggleMastered(" in js
+    # 反应式字段
+    assert "isOpen: false" in js
+    assert "index: 0" in js
+    assert "flipped: false" in js
+    assert "cards: []" in js
+    # 派生 getter
+    assert "get totalCards()" in js
+    assert "get currentCard()" in js
+    assert "get progressText()" in js
+    assert "get stateText()" in js
+    assert "get toggleLabel()" in js
+    assert "get frontText()" in js
+    assert "get backHtml()" in js
+    assert "get panelClass()" in js
+    # 兼容老的 window.openVocabReview
+    assert "window.openVocabReview" in js
+    assert "window.closeVocabReview" in js
+
+
+def test_vocab_review_drops_legacy_imperative_state():
+    """Stage 4b: 旧版模块级闭包状态对象已删除。"""
+    js = (REPO_ROOT / "static" / "js" / "pages" / "vocabulary.js").read_text(encoding="utf-8")
+    # 旧版的 state 对象字面量
+    assert "const state = {" not in js
+    # 旧版的 setReviewText / syncReviewUI 等过程式更新函数
+    assert "function setReviewText" not in js
+    assert "function syncReviewUI" not in js
+    assert "function syncListItem" not in js
+    # 旧版的 syncReviewUI() 主动触发
+    assert "syncReviewUI()" not in js
+    # 旧版 init 末尾的 syncReviewUI 调用没了
+    assert "syncReviewUI();\n      });" not in js
+
