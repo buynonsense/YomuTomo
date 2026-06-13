@@ -44,11 +44,23 @@
             <div class="news-preview-panel__header">
               <div>
                 <h3>预览结果</h3>
-                <p id="rsshub-preview-meta">预览结果会显示在这里，点击条目上的按钮即可生成文章。</p>
+                <p id="rsshub-preview-meta">预览结果会显示在这里，勾选条目后点击“加入爬取队列”即可批量生成文章。</p>
               </div>
             </div>
             <div id="rsshub-preview-grid" class="news-grid"></div>
             <p id="rsshub-preview-empty" class="news-empty-state" hidden>暂时没有抓到可用条目，请检查订阅链接或稍后重试。</p>
+          </section>
+
+          <section id="crawl-queue-panel" class="crawl-queue-panel" hidden>
+            <div class="crawl-queue-panel__header">
+              <div>
+                <h3>爬取队列</h3>
+                <p id="crawl-queue-meta">实时显示所有进行中和最近完成的任务。</p>
+              </div>
+              <span id="crawl-queue-count" class="crawl-queue-count" hidden></span>
+            </div>
+            <ul id="crawl-queue-list" class="crawl-queue-list"></ul>
+            <p id="crawl-queue-empty" class="news-empty-state">暂无爬取任务。</p>
           </section>
 
           {% if news_items and news_items|length > 0 %}
@@ -63,6 +75,10 @@
                   data-news-published-at="{{ item.published_at or '' }}"
                   data-crawl-endpoint="/crawl_news"
                 >
+                  <label class="news-card__select" title="勾选加入爬取队列">
+                    <input type="checkbox" class="news-card__checkbox" data-news-select />
+                    <span class="news-card__select-box" aria-hidden="true"></span>
+                  </label>
                   <div class="news-card__top">
                     <span class="news-card__badge">RSSHub</span>
                     <a href="{{ item.source_url | safe_href }}" target="_blank" rel="noopener noreferrer" class="btn-secondary" title="查看原文" aria-label="查看原文">原文</a>
@@ -77,20 +93,27 @@
                   {% if item.outline %}
                     <p class="news-card__outline">{{ item.outline }}</p>
                   {% endif %}
-                  <div class="news-card__actions">
-                    <div class="btn-loading-shell">
-                      <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
-                        <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
-                      </svg>
-                      <button type="button" class="btn-primary news-crawl-btn btn-with-loading-ring">
-                        <span class="btn-label">生成文章</span>
-                      </button>
-                    </div>
-                  </div>
                 </article>
               {% endfor %}
             </div>
           {% endif %}
+
+          <div id="news-selection-toolbar" class="news-selection-toolbar" hidden>
+            <div class="news-selection-toolbar__count">
+              已选 <span id="news-selection-count">0</span> 条
+            </div>
+            <div class="news-selection-toolbar__actions">
+              <button type="button" id="news-selection-clear" class="btn-secondary">清空选择</button>
+              <div class="btn-loading-shell">
+                <svg class="loading-ring" viewBox="0 0 120 52" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+                  <rect x="2" y="2" width="116" height="48" rx="24" ry="24"></rect>
+                </svg>
+                <button type="button" id="news-selection-submit" class="btn-primary btn-with-loading-ring">
+                  <span class="btn-label">加入爬取队列</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
     </div>
