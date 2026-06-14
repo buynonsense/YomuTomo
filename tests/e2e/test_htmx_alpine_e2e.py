@@ -210,7 +210,11 @@ def test_settings_modal_alpine_toggle(logged_in_context):
 
 @pytest.mark.e2e
 def test_news_center_alpine_selection_toolbar(logged_in_context):
-    """Stage 5: 新闻多选 Alpine 状态机 - 工具栏 hidden / count 联动。"""
+    """Stage 5: 新闻多选 Alpine 状态机 - 工具栏 hidden / count 联动。
+
+    真实集成: 通过 bridge.add() 走真实代码路径 (不是直接派发事件),
+    验证 Alpine 通过 window 监听器收到事件并切换 count。
+    """
     page = logged_in_context["page"]
     page.goto(logged_in_context["base_url"] + "/news_center")
     page.wait_for_timeout(300)
@@ -222,15 +226,32 @@ def test_news_center_alpine_selection_toolbar(logged_in_context):
     is_hidden = toolbar.evaluate("el => el.hasAttribute('hidden') || el.hidden || window.getComputedStyle(el).display === 'none'")
     assert is_hidden, "selection toolbar should be hidden initially"
 
-    # 模拟 Alpine 派发事件 (x-on:news:selection-changed.window 监听 window)
+    # 真实集成: 注入假卡片, 走 bridge.add() 路径 (这正是用户点 checkbox 时的代码路径)
     page.evaluate("""
-      window.dispatchEvent(new CustomEvent('news:selection-changed', { detail: { count: 3 } }));
+      () => {
+        const card = document.createElement('article');
+        card.setAttribute('data-news-card', 'true');
+        card.setAttribute('data-news-url', 'http://test.example.com/news/1');
+        card.setAttribute('data-news-title', 'Test Article');
+        card.setAttribute('data-news-source-url', 'http://test.example.com');
+        document.body.appendChild(card);
+        // 走 bridge.add() — 它会派发 news:selection-changed 事件,
+        // Alpine 工具栏必须能收到 (要求派发到 window, 不是 document)
+        window.__newsSelectionBridge.add(card);
+      }
     """)
     page.wait_for_timeout(200)
 
-    # 工具栏应可见
+    # 工具栏应可见 (Alpine 收到事件后 count=1, x-bind:hidden 解锁)
     is_hidden_after = toolbar.evaluate("el => el.hasAttribute('hidden') || el.hidden || window.getComputedStyle(el).display === 'none'")
-    assert not is_hidden_after, f"selection toolbar should be visible after count=3, got hidden={is_hidden_after}"
+    assert not is_hidden_after, (
+        f"selection toolbar should be visible after bridge.add(), got hidden={is_hidden_after}. "
+        "这通常是 bridge 派发事件的目标 (document vs window) 与 Alpine x-on:...window 监听器不匹配"
+    )
+
+    # 额外验证: 工具栏内的 count 文本
+    count_text = page.locator("#news-selection-count").text_content()
+    assert count_text and count_text.strip() == "1", f"expected count=1, got {count_text!r}"
 
 
 @pytest.mark.e2e
