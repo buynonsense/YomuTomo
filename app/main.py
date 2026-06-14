@@ -100,10 +100,25 @@ app = FastAPI(
 )
 
 
+class _NoCacheStaticFiles(StaticFiles):
+    """静态资源默认走 no-cache, 让浏览器每次都回源校验 ETag。
+
+    避免开发期/重构期改 JS/CSS 后用户被陈旧缓存卡住 (e.g. alpine 没起来 / 修了 bridge
+    但浏览器还在用旧 JS)。`uvicorn --reload` 会重启 worker, 改完源码用户刷一次即可拿新版。
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        # 强制 revalidate: 浏览器每次都用 If-None-Match 校验 ETag, 命中返回 304,
+        # 文件变了就拉新内容。配合 StaticFiles 自带的 ETag/Last-Modified 即可。
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(HtmxRequestMiddleware)
 app.add_middleware(ExtensionCompatibilityMiddleware)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", _NoCacheStaticFiles(directory="static"), name="static")
 
 
 # 路由注册
