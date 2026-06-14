@@ -37,7 +37,9 @@
     },
 
     emitChanged() {
-      document.dispatchEvent(
+      // 派发到 window: Alpine 模板用 x-on:news:selection-changed.window 监听
+      // (派到 document 不会触发 window 监听器, 选中状态不会同步到工具栏 count)
+      window.dispatchEvent(
         new CustomEvent('news:selection-changed', {
           detail: { count: this.getCount() }
         })

@@ -1302,6 +1302,12 @@ def test_news_center_js_exposes_alpine_factory():
     # 事件名
     assert "news:selection-changed" in js
     assert "CustomEvent" in js
+    # 派发目标必须是 window (Alpine 用 x-on:...window 监听);
+    # 派到 document 不会触发 window 监听器, 选中数不会同步到工具栏。
+    assert "window.dispatchEvent" in js
+    assert "document.dispatchEvent" not in js, (
+        "bridge 派发事件到 document 与 Alpine x-on:...window 监听器不匹配"
+    )
 
 
 def test_news_center_drops_legacy_imperative_state():
