@@ -39,6 +39,67 @@
             </a>
             {% endif %}
           </div>
+        </section>
+
+        <section class="card control-card">
+          <h2>🎙️ 语音练习</h2>
+          <div class="reading-toolbar">
+            <div class="toolbar-group">
+              <span class="toolbar-label">假名显示</span>
+              <div class="toolbar-actions">
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="show">显示</button>
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hover">悬停</button>
+                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hide">隐藏</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <span class="toolbar-label">难度过滤</span>
+              <div class="toolbar-actions">
+                <button type="button" class="btn-secondary" data-furigana-level="1">N5</button>
+                <button type="button" class="btn-secondary" data-furigana-level="2">N4</button>
+                <button type="button" class="btn-secondary" data-furigana-level="3">N3</button>
+                <button type="button" class="btn-secondary" data-furigana-level="4">N2+</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <span class="toolbar-label">全文朗读</span>
+              <div class="toolbar-actions">
+                <button id="tts-preload-btn" class="btn-secondary" type="button" title="一次性预生成全部句子并写入本地缓存，切换页面后仍可秒开">⬇️ 加载语音</button>
+                <button id="tts-play-btn" class="btn-record" type="button">🔈 播放全文</button>
+                <button id="tts-stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止朗读</button>
+              </div>
+            </div>
+          </div>
+          <div class="control-buttons">
+            <button id="record-btn" class="btn-record" type="button">▶️ 开始录音</button>
+            <button id="stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止录音</button>
+            <button id="export-pdf-btn" class="btn-export" type="button">📄 导出PDF</button>
+          </div>
+          <div id="tts-preload-progress" class="tts-preload-progress" hidden>
+            <div class="tts-preload-progress__bar"><div id="tts-preload-progress-fill" class="tts-preload-progress__fill"></div></div>
+            <span id="tts-preload-progress-text" class="tts-preload-progress__text">准备中…</span>
+          </div>
+          <div id="result" class="result-display"></div>
+          <div id="evaluation-detail" class="evaluation-detail" hidden>
+            <div class="evaluation-detail__summary">
+              <span>原文对比</span>
+              <span>识别对比</span>
+            </div>
+            <div class="evaluation-detail__columns">
+              <div class="evaluation-detail__column">
+                <h3>原文</h3>
+                <div id="evaluation-original-html" class="evaluation-detail__text"></div>
+              </div>
+              <div class="evaluation-detail__column">
+                <h3>识别</h3>
+                <div id="evaluation-recognized-html" class="evaluation-detail__text"></div>
+              </div>
+            </div>
+          </div>
+          <div id="evaluation-summary" class="evaluation-summary" aria-live="polite"></div>
+        </section>
+
+        <section class="card lesson-card">
           <h2>📖 课文内容</h2>
           <!-- 隐藏的数据存储，用于JavaScript访问 -->
           <div id="text-data" style="display: none;">
@@ -104,64 +165,6 @@
               {% endfor %}
             </div>
           </div>
-        </section>
-
-        <section class="card control-card">
-          <h2>🎙️ 语音练习</h2>
-          <div class="reading-toolbar">
-            <div class="toolbar-group">
-              <span class="toolbar-label">假名显示</span>
-              <div class="toolbar-actions">
-                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="show">显示</button>
-                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hover">悬停</button>
-                <button type="button" class="btn-secondary furigana-mode-btn" data-furigana-mode="hide">隐藏</button>
-              </div>
-            </div>
-            <div class="toolbar-group">
-              <span class="toolbar-label">难度过滤</span>
-              <div class="toolbar-actions">
-                <button type="button" class="btn-secondary" data-furigana-level="1">N5</button>
-                <button type="button" class="btn-secondary" data-furigana-level="2">N4</button>
-                <button type="button" class="btn-secondary" data-furigana-level="3">N3</button>
-                <button type="button" class="btn-secondary" data-furigana-level="4">N2+</button>
-              </div>
-            </div>
-            <div class="toolbar-group">
-              <span class="toolbar-label">全文朗读</span>
-              <div class="toolbar-actions">
-                <button id="tts-preload-btn" class="btn-secondary" type="button" title="一次性预生成全部句子并写入本地缓存，切换页面后仍可秒开">⬇️ 加载语音</button>
-                <button id="tts-play-btn" class="btn-record" type="button">🔈 播放全文</button>
-                <button id="tts-stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止朗读</button>
-              </div>
-            </div>
-          </div>
-          <div class="control-buttons">
-            <button id="record-btn" class="btn-record" type="button">▶️ 开始录音</button>
-            <button id="stop-btn" class="btn-stop" type="button" disabled>⏹️ 停止录音</button>
-            <button id="export-pdf-btn" class="btn-export" type="button">📄 导出PDF</button>
-          </div>
-          <div id="tts-preload-progress" class="tts-preload-progress" hidden>
-            <div class="tts-preload-progress__bar"><div id="tts-preload-progress-fill" class="tts-preload-progress__fill"></div></div>
-            <span id="tts-preload-progress-text" class="tts-preload-progress__text">准备中…</span>
-          </div>
-          <div id="result" class="result-display"></div>
-          <div id="evaluation-detail" class="evaluation-detail" hidden>
-            <div class="evaluation-detail__summary">
-              <span>原文对比</span>
-              <span>识别对比</span>
-            </div>
-            <div class="evaluation-detail__columns">
-              <div class="evaluation-detail__column">
-                <h3>原文</h3>
-                <div id="evaluation-original-html" class="evaluation-detail__text"></div>
-              </div>
-              <div class="evaluation-detail__column">
-                <h3>识别</h3>
-                <div id="evaluation-recognized-html" class="evaluation-detail__text"></div>
-              </div>
-            </div>
-          </div>
-          <div id="evaluation-summary" class="evaluation-summary" aria-live="polite"></div>
         </section>
       </main>
     </div>
