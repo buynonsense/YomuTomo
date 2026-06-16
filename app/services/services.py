@@ -163,19 +163,46 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
         )
         content = (response.choices[0].message.content or "").strip()
 
-        # 1) 尝试严格 JSON 解析 (最常见路径)
+        # 1) 最常见路径: 严格 JSON 解析 (整段就是合法 JSON 数组)
         vocab = _parse_vocab_json(content)
         if vocab:
             return vocab[:8]
 
-        # 2) 失败: 尝试从 content 中剥出 JSON 子串 (AI 偶尔会加前言/后语)
-        #    找第一个 '[' 到最后一个 ']' 之间的内容
+        # 2) AI 加了 markdown 代码块 (```json ... ```), 先把代码块抽出来
+        for fence in ("```json", "```JSON", "```"):
+            open_idx = content.find(fence)
+            if open_idx == -1:
+                continue
+            fence_end = content.find("```", open_idx + len(fence))
+            if fence_end == -1:
+                continue
+            inner = content[open_idx + len(fence):fence_end].strip()
+            vocab = _parse_vocab_json(inner)
+            if vocab:
+                return vocab[:8]
+
+        # 3) AI 在 JSON 前后加了前言/后语, 剥 [ ... ] 子串;
+        #    或者 AI 只给了一个对象 { ... } (没包成数组), 也兼容。
         first = content.find('[')
         last = content.rfind(']')
         if first != -1 and last > first:
             vocab = _parse_vocab_json(content[first:last + 1])
             if vocab:
                 return vocab[:8]
+        # 3b) 没有 [ ... ] 但有 { ... }, 包成数组再试一次
+        obj_first = content.find('{')
+        obj_last = content.rfind('}')
+        if obj_first != -1 and obj_last > obj_first:
+            vocab = _parse_vocab_json("[" + content[obj_first:obj_last + 1] + "]")
+            if vocab:
+                return vocab[:8]
+
+        # 4) 终极兜底: AI 实在不配合 (只给散文 / 解释), 用正则从原文抠日语词
+        #    此时我们没有 AI 生成的 meaning, 留 None, 让模板显示 "—"
+        fallback = _extract_japanese_words_fallback(content)
+        if fallback:
+            log_with_time(f"[AI] extract_vocabulary JSON 全失败, 走正则兜底, 拿到 {len(fallback)} 个词")
+            return fallback[:8]
 
         log_with_time(f"[AI] extract_vocabulary 解析失败, content={content[:200]!r}")
         return []
@@ -183,6 +210,43 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
     except Exception as e:
         log_with_time(f"[AI] extract_vocabulary failed: {e}")
         return []
+
+
+def _extract_japanese_words_fallback(content: str) -> List[Dict]:
+    """终极兜底: AI 没返回可用 JSON, 从 AI 整段回复里抠日语词。
+
+    - 只在严格 JSON 解析 + markdown 剥离 + [...]/ {...} 剥离全部失败时用
+    - 词从 AI 的整段回复里抠 (AI 通常会把词写进 ```json ``` 或者散落在散文里)
+    - meaning 留 None: 用户在 UI 上看到 "释义：—"
+    - 入库过滤在调用方统一做 (有 word 但没 meaning 的条目, 调用方可以选择
+      丢弃或保存)。当前 extract_vocabulary 直接返回, 由保存路径决定。
+    """
+    import re
+    # 抠两种: 带引号的 "日语词" / 散文中明显的 2-8 个汉字/假名词
+    quoted = re.findall(r'["\'「『]([^"\'」』\n]{2,10})["\'」』]', content)
+    bare = re.findall(r'[々〆〇ーゝゞ]|[一-龯]{2,}|[ぁ-ゖ]{2,}|[ァ-ヺ]{2,}', content)
+    candidates = quoted + bare
+    # 中文虚词 / 助词 (日语不会用这些字), 一旦词里出现就大概率是中文短语
+    _chinese_particles = set("的是在了和与为于从到对把被给让使请要能会可以可能")
+    seen = set()
+    out: List[Dict] = []
+    for w in candidates:
+        word = w.strip()
+        if not word or word in seen:
+            continue
+        if word.isascii() or len(word) <= 1:
+            continue
+        if any(ch.isdigit() for ch in word):
+            continue
+        # 排除 schema 字段名 / 常见噪声
+        if word in ('word', 'meaning', 'pronunciation', 'taifuu'):
+            continue
+        # 含中文虚词的整段话不要 (是 Japanese 的话用 の / は / を, 不会用 的 / 是)
+        if any(ch in _chinese_particles for ch in word):
+            continue
+        seen.add(word)
+        out.append({"word": word, "meaning": None})
+    return out
 
 
 def _parse_vocab_json(raw: str) -> List[Dict]:
