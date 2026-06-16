@@ -45,7 +45,14 @@
               <div>
                 <h3>预览结果</h3>
                 <p id="rsshub-preview-meta">预览结果会显示在这里，勾选条目后点击“加入爬取队列”即可批量生成文章。</p>
+                <p id="rsshub-preview-cache-info" class="news-preview-panel__cache-info" hidden></p>
               </div>
+              <button type="button"
+                      id="rsshub-preview-clear-cache"
+                      class="btn btn-ghost btn-sm"
+                      hidden>
+                清除预览缓存
+              </button>
             </div>
             <div id="rsshub-preview-grid" class="news-grid"></div>
             <p id="rsshub-preview-empty" class="news-empty-state" hidden>暂时没有抓到可用条目，请检查订阅链接或稍后重试。</p>

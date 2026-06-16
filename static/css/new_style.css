@@ -1234,6 +1234,25 @@ rt {
   color: var(--text-secondary);
 }
 
+.news-preview-panel__cache-info {
+  margin-top: 6px !important;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.news-preview-panel__cache-info::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+}
+
 .news-limit-link.is-active {
   background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
   color: #fff;

@@ -296,6 +296,121 @@
     });
   }
 
+  // --- 预览缓存 (localStorage) ----------------------------------------
+
+  const PREVIEW_CACHE_KEY = 'yomutomo:news-preview:v1';
+  const PREVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h 临时保存
+
+  function readStorage(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeStorage(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function removeStorage(key) {
+    try {
+      window.localStorage.removeItem(key);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function savePreviewCache(sourceUrl, items) {
+    if (!Array.isArray(items)) {
+      return false;
+    }
+    const payload = {
+      source_url: sourceUrl || '',
+      items: items,
+      saved_at: new Date().toISOString()
+    };
+    return writeStorage(PREVIEW_CACHE_KEY, JSON.stringify(payload));
+  }
+
+  function clearPreviewCache() {
+    return removeStorage(PREVIEW_CACHE_KEY);
+  }
+
+  function loadPreviewCache() {
+    const raw = readStorage(PREVIEW_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      // 坏数据: 静默清掉
+      clearPreviewCache();
+      return null;
+    }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) {
+      clearPreviewCache();
+      return null;
+    }
+    // 24h 过期
+    const savedAt = Date.parse(parsed.saved_at || '');
+    if (!savedAt || (Date.now() - savedAt) > PREVIEW_CACHE_TTL_MS) {
+      clearPreviewCache();
+      return null;
+    }
+    return parsed;
+  }
+
+  function formatRelativeTime(savedAtIso) {
+    const savedAt = Date.parse(savedAtIso || '');
+    if (!savedAt) {
+      return '';
+    }
+    const diffSec = Math.max(0, Math.floor((Date.now() - savedAt) / 1000));
+    if (diffSec < 60) {
+      return `${diffSec} 秒前`;
+    }
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) {
+      return `${diffMin} 分钟前`;
+    }
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) {
+      return `${diffHour} 小时前`;
+    }
+    return new Date(savedAt).toLocaleString();
+  }
+
+  function setCacheInfo(visible, savedAtIso) {
+    const cacheInfo = document.getElementById('rsshub-preview-cache-info');
+    if (!cacheInfo) {
+      return;
+    }
+    if (!visible || !savedAtIso) {
+      cacheInfo.hidden = true;
+      cacheInfo.textContent = '';
+      return;
+    }
+    cacheInfo.hidden = false;
+    cacheInfo.textContent = `（临时缓存于 ${formatRelativeTime(savedAtIso)}，关闭浏览器后仍可见，24 小时后自动失效）`;
+  }
+
+  function setClearCacheButton(visible) {
+    const btn = document.getElementById('rsshub-preview-clear-cache');
+    if (!btn) {
+      return;
+    }
+    btn.hidden = !visible;
+  }
+
   // --- 预览 ------------------------------------------------------------
 
   function setPreviewPanelState(visible) {
@@ -319,6 +434,8 @@
     if (previewMeta) {
       previewMeta.textContent = '预览结果会显示在这里，勾选条目后点击"加入爬取队列"即可批量生成文章。';
     }
+    setCacheInfo(false);
+    setClearCacheButton(false);
     setPreviewPanelState(false);
   }
 
@@ -397,7 +514,8 @@
     return article;
   }
 
-  function renderPreviewItems(items, sourceUrl) {
+  function renderPreviewItems(items, sourceUrl, options) {
+    const opts = options || {};
     const previewGrid = document.getElementById('rsshub-preview-grid');
     const previewEmpty = document.getElementById('rsshub-preview-empty');
     const previewMeta = document.getElementById('rsshub-preview-meta');
@@ -430,6 +548,9 @@
     });
     setPreviewPanelState(true);
     formatNewsTimeElements(previewGrid);
+    // 缓存信息 (从缓存恢复时显示 "X 分钟前"; 实时预览时隐藏)
+    setCacheInfo(Boolean(opts.fromCache && opts.savedAt), opts.savedAt);
+    setClearCacheButton(Boolean(opts.fromCache));
   }
 
   async function previewCustomUrl() {
@@ -462,6 +583,8 @@
         throw new Error(data.message || data.error || '预览失败');
       }
       renderPreviewItems(data.items || [], data.source_url || customUrl);
+      // 实时预览成功: 写入 localStorage (24h 内重开浏览器可见)
+      savePreviewCache(data.source_url || customUrl, data.items || []);
       notify(
         data.count > 0 ? `已预览 ${data.count} 条订阅内容` : (data.message || '未抓到可用条目'),
         data.count > 0 ? 'success' : 'warning'
@@ -507,7 +630,25 @@
         }
       });
     }
+    const clearCacheBtn = document.getElementById('rsshub-preview-clear-cache');
+    if (clearCacheBtn) {
+      clearCacheBtn.addEventListener('click', function () {
+        if (clearPreviewCache()) {
+          clearPreviewPanel();
+          notify('预览缓存已清除', 'success');
+        }
+      });
+    }
     formatNewsTimeElements(document);
     bindInitial();
+
+    // 恢复上次预览 (24h 内的临时缓存)
+    const cached = loadPreviewCache();
+    if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+      renderPreviewItems(cached.items, cached.source_url, {
+        fromCache: true,
+        savedAt: cached.saved_at
+      });
+    }
   });
 })();
