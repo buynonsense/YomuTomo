@@ -1,6 +1,7 @@
 import json
 import pykakasi
 import openai
+import httpx
 from passlib.hash import pbkdf2_sha256
 from typing import List, Dict, Tuple
 from app.core.config import settings
@@ -207,9 +208,48 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
         log_with_time(f"[AI] extract_vocabulary 解析失败, content={content[:200]!r}")
         return []
 
+    # AI 抛异常 (超时 / 5xx / 网络错误) 时, 重新抛出, 让上层把整篇文章标记为失败,
+    # 通知中心写 "生词提取失败"。不要静默 return [], 否则用户会看到空生词但不知原因。
     except Exception as e:
         log_with_time(f"[AI] extract_vocabulary failed: {e}")
-        return []
+        raise
+
+
+def _is_transient_ai_error(err: Exception) -> bool:
+    """判断 AI 调用异常是否值得重试。
+
+    优先按异常类型判断 (精确), 退而求其次按状态码/消息前缀。
+    不做模糊的子串匹配 (避免 "rate" 命中 "celebrate" 这类误判)。
+    """
+    # 连接层 / 超时层: httpx 与 openai sdk 都会抛这些
+    if isinstance(err, (httpx.TimeoutException, httpx.ConnectError, ConnectionError, TimeoutError)):
+        return True
+    # 5xx: openai 的 APIStatusError 有 status_code 字段
+    status = getattr(err, "status_code", None)
+    if isinstance(status, int) and 500 <= status < 600:
+        return True
+    # 429: 限流, 短暂重试有意义
+    if isinstance(status, int) and status == 429:
+        return True
+    return False
+
+
+def _extract_vocabulary_with_retry(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
+    """对 extract_vocabulary 包一层应用层重试。
+
+    底层 AIClient 已有 AI_REQUEST_RETRIES 次内部重试, 这里再重试一次纯粹是兜底,
+    给瞬时网络问题再多一次机会。最多 2 次尝试 (本身 + 1 次重试)。
+    4xx / 解析失败等非瞬时错误, 一次后直接抛, 不浪费用户时间。
+    """
+    for attempt in (1, 2):
+        try:
+            return extract_vocabulary(text, model, client)
+        except Exception as e:
+            log_with_time(
+                f"[AI] extract_vocabulary attempt {attempt} failed: {e} (transient={_is_transient_ai_error(e)})"
+            )
+            if not _is_transient_ai_error(e) or attempt == 2:
+                raise
 
 
 def _extract_japanese_words_fallback(content: str) -> List[Dict]:
@@ -398,7 +438,8 @@ def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[
         return generate_ruby(text, model, client)
 
     def extract_vocab_task():
-        return extract_vocabulary(text, model, client)
+        # 用带重试的版本: AI 超时 / 5xx 会重试一次; 4xx / 解析失败直接抛
+        return _extract_vocabulary_with_retry(text, model, client)
 
     def translate_task():
         return translate_to_chinese(text, model, client)
