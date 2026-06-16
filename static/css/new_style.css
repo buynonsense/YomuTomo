@@ -981,23 +981,74 @@ rt {
   line-height: 1.4;
 }
 
-.btn-remove {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  color: #999;
-  transition: var(--transition);
-  padding: 4px;
-  border-radius: 50%;
+.vocab-meaning--missing {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-style: italic;
 }
 
-.btn-remove:hover {
-  color: #e91e63;
-  background: rgba(233, 30, 99, 0.1);
+.vocab-meaning__dash {
+  letter-spacing: 2px;
+}
+
+/* 彻底不再渲染"读音"。模板已经不再输出 .vocab-pronunciation,
+   这里兜底: 万一旧数据 / 旧 fragment 漏过来, 也直接隐藏 (只针对
+   元素本身, 不会误杀父卡片)。*/
+.vocab-pronunciation {
+  display: none !important;
+}
+
+/* 生词 "已掌握 / 标记掌握" 按钮: 必须一眼能看出是按钮 + 当前状态
+   - 未掌握: 浅粉底 + 粉边 + 灰字 (待操作)
+   - 已掌握: 绿底 + 白字 (状态: ✓ 已掌握)
+   - hover: 颜色加深 + 微微抬起
+*/
+.vocab-master-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 80px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: 999px;
+  border: 1.5px solid #f8bbd9;
+  background: #fce4ec;
+  color: #ad1457;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vocab-master-btn::before {
+  content: "+";
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.vocab-master-btn:hover {
+  background: #f48fb1;
+  border-color: #ec407a;
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(233, 30, 99, 0.18);
+}
+
+.vocab-master-btn.is-mastered {
+  background: linear-gradient(135deg, #26a69a, #66bb6a);
+  border-color: transparent;
+  color: #fff;
+}
+
+.vocab-master-btn.is-mastered::before {
+  content: "✓";
+}
+
+.vocab-master-btn.is-mastered:hover {
+  background: linear-gradient(135deg, #00897b, #43a047);
+  box-shadow: 0 4px 10px rgba(38, 166, 154, 0.28);
 }
 
 .vocab-review-panel {

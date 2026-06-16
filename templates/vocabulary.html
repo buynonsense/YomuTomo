@@ -91,10 +91,14 @@
           {% if vocab_rows and vocab_rows|length > 0 %}
             <div class="vocab-grid vocab-grid--spaced">
               {% for item in vocab_rows %}
-            <div class="vocab-item {% if item.status == 'mastered' %}is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-pronunciation="{{ item.pronunciation }}" data-vocab-mastered="{{ 1 if item.status == 'mastered' else 0 }}">
-              <div class="vocab-pronunciation">{{ item.pronunciation }}</div>
+            <div class="vocab-item {% if item.status == 'mastered' %}is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-mastered="{{ 1 if item.status == 'mastered' else 0 }}">
               <div class="vocab-word">{{ item.word }}</div>
-              <div class="vocab-meaning">释义：{{ item.meaning }}</div>
+              {% set _cleaned_meaning = item.meaning | clean_meaning %}
+              {% if _cleaned_meaning %}
+              <div class="vocab-meaning">释义：{{ _cleaned_meaning }}</div>
+              {% else %}
+              <div class="vocab-meaning vocab-meaning--missing">释义：<span class="vocab-meaning__dash">—</span></div>
+              {% endif %}
               {% if item.article_title %}
               <div class="vocab-meaning">来源：{{ item.article_title }}</div>
               {% endif %}
@@ -113,13 +117,13 @@
                       hx-target="this"
                       data-vocab-word="{{ item.word }}">
                   <input type="hidden" name="word" value="{{ item.word }}" />
-                  <input type="hidden" name="pronunciation" value="{{ item.pronunciation or '' }}" />
                   <input type="hidden" name="meaning" value="{{ item.meaning or '' }}" />
                   <input type="hidden" name="article_id" value="{{ item.article_id or '' }}" />
                   <input type="hidden" name="current_mastered" value="{{ 1 if item.status == 'mastered' else 0 }}" />
                   <button type="submit"
-                          class="btn-remove{% if item.status == 'mastered' %} is-mastered{% endif %}"
-                          data-vocab-action="toggle-mastered">{{ '取消掌握' if item.status == 'mastered' else '已掌握' }}</button>
+                          class="vocab-master-btn{% if item.status == 'mastered' %} is-mastered{% endif %}"
+                          data-vocab-action="toggle-mastered"
+                          aria-label="{{ '取消已掌握' if item.status == 'mastered' else '标记为已掌握' }}">{{ '已掌握' if item.status == 'mastered' else '标记掌握' }}</button>
                 </form>
               </div>
             </div>

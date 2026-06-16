@@ -886,10 +886,8 @@ class ReadingPageController {
       return;
     }
 
-    const pronunciation = item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '';
     const word = item.dataset.vocabWord || item.querySelector('.vocab-word')?.textContent || '';
-    const text = pronunciation || word;
-    if (!text.trim()) {
+    if (!word.trim()) {
       return;
     }
 
@@ -901,7 +899,7 @@ class ReadingPageController {
     this.syncSentenceHighlight();
     this.updateTtsButtons(true);
 
-    await this.fetchAndPlayAudio(sessionId, text, { speed: 1.0 });
+    await this.fetchAndPlayAudio(sessionId, word, { speed: 1.0 });
     if (!this.isActivePlayback(sessionId) || !this.audio) {
       this.updateTtsButtons(false);
       return;
@@ -944,10 +942,8 @@ class ReadingPageController {
       const isMastered = item.dataset.vocabMastered === '1';
       item.classList.toggle('is-mastered', isMastered);
       item.classList.toggle('is-hidden', this.state.hideMastered && isMastered);
-      const button = item.querySelector('.btn-remove');
-      if (button) {
-        button.textContent = isMastered ? '取消掌握' : '已掌握';
-      }
+      // 按钮 text 由模板 htmx-render, 不要再 JS 里覆写
+      // (避免把 "已掌握 / 标记掌握" 改回旧的 "已掌握 / 取消掌握")。
     });
   }
 
@@ -1019,7 +1015,6 @@ class ReadingPageController {
         title: document.getElementById('lesson-title')?.textContent || '',
         vocab: Array.from(document.querySelectorAll('.vocab-item')).map((item) => ({
           word: item.dataset.vocabWord || item.querySelector('.vocab-word')?.textContent || '',
-          pronunciation: item.dataset.vocabPronunciation || item.querySelector('.vocab-pronunciation')?.textContent || '',
           meaning: item.querySelector('.vocab-meaning')?.textContent || '',
           mastered: item.dataset.vocabMastered === '1',
           article_id: this.articleId ? Number(this.articleId) : null

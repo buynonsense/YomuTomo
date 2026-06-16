@@ -139,10 +139,9 @@
           document.querySelectorAll(selector).forEach((item) => {
             item.dataset.vocabMastered = mastered ? '1' : '0';
             item.classList.toggle('is-mastered', mastered);
-            const toggleButton = item.querySelector('[data-vocab-action="toggle-mastered"]');
-            if (toggleButton) {
-              toggleButton.textContent = mastered ? '取消掌握' : '已掌握';
-            }
+            // htmx 已经把正确的按钮 outerHTML 换回来了, 这里只需要同步
+            // 父容器的 class / data-attr, 不再去覆写按钮 textContent
+            // (避免把模板里的 "已掌握 / 标记掌握" 改回旧的 "已掌握 / 取消掌握")。
           });
         });
       },
@@ -306,15 +305,12 @@
         this._persistStatus(card, !card.mastered, button)
           .then((data) => {
             card.mastered = Boolean(data.mastered);
-            // 列表项同步
+            // 列表项同步 (只同步 class / data, 不要去覆写按钮 textContent,
+            // htmx swap 已经把正确的 outerHTML 换回来了)。
             const selector = `.vocab-item[data-vocab-word="${cssEscape(card.word)}"]`;
             document.querySelectorAll(selector).forEach((item) => {
               item.dataset.vocabMastered = card.mastered ? '1' : '0';
               item.classList.toggle('is-mastered', card.mastered);
-              const toggleButton = item.querySelector('[data-vocab-action="toggle-mastered"]');
-              if (toggleButton) {
-                toggleButton.textContent = card.mastered ? '取消掌握' : '已掌握';
-              }
             });
           })
           .catch((error) => {
@@ -328,7 +324,7 @@
         if (!item || !('speechSynthesis' in window)) {
           return;
         }
-        const text = item.dataset.vocabPronunciation || item.dataset.vocabWord || '';
+        const text = item.dataset.vocabWord || '';
         if (!text.trim()) {
           return;
         }

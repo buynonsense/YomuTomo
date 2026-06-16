@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.templating import Jinja2Templates
 
+from app.utils.placeholder_texts import PLACEHOLDER_MEANINGS
 from app.utils.time import to_beijing_time
 from app.utils.url import safe_href
 
@@ -36,9 +37,27 @@ def _task_progress_percent(task) -> int:
     return int(round(ratio * 100))
 
 
+def _clean_meaning(value) -> str:
+    """Jinja2 filter: 清洗脏数据里的 placeholder 释义。
+
+    历史脏数据 (旧版 AI 抽取 / 旧版 vocab_json) 经常存:
+        pronunciation = "读音待补充"
+        meaning = "释义待补充"
+    这两个字段用户已明确不要, 但旧条目已经落库, 不能直接删,
+    所以在渲染层把它映射成空串, 模板上用 "—" 占位或隐藏整行。
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text in PLACEHOLDER_MEANINGS:
+        return ""
+    return text
+
+
 def create_templates(directory: str = "templates") -> Jinja2Templates:
     templates = Jinja2Templates(directory=directory)
     templates.env.filters["safe_href"] = safe_href
     templates.env.filters["format_datetime"] = _format_datetime
+    templates.env.filters["clean_meaning"] = _clean_meaning
     templates.env.globals["task_progress_percent"] = _task_progress_percent
     return templates

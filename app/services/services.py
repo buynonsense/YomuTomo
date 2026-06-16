@@ -4,6 +4,7 @@ import openai
 from passlib.hash import pbkdf2_sha256
 from typing import List, Dict, Tuple
 from app.core.config import settings
+from app.utils.placeholder_texts import PLACEHOLDER_MEANINGS
 import concurrent.futures
 import threading
 import asyncio
@@ -120,84 +121,108 @@ def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
 
 
 def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
-    prompt = f"""分析以下日语文本，提取出可能对初学者或中级学习者困难的词语。
-重点提取：
+    """从日语文本中提取生词。
+
+    返回 [{word, meaning}] 列表, meaning 必须由 AI 生成 (中文)。
+
+    强约束:
+    - 只返回 JSON 数组, 不返回任何解释/前言
+    - 每个词必须带中文 meaning (没有就跳过这个, 不要留空)
+    - 不再要求 pronunciation (用户不要读音)
+    """
+    prompt = f"""分析以下日语文本, 提取出可能对初学者或中级学习者困难的词语。
+重点提取:
 - 汉字复合词
 - 生僻词语
 - 专业术语
 - 不常见的表达
 
-对于每个词语，请提供：
-- word: 日语词语（必须是日语，不要包含英文）
-- meaning: 中文释义
-- pronunciation: 罗马音读音
+对于每个词语, 请提供:
+- word: 日语词语 (必须是日语, 不要包含英文)
+- meaning: 中文释义 (必须给出, 5-15 字, 不要空着)
 
-只提取真正困难的词语（3-8个），跳过简单词语如"です"、"ます"等。
-返回JSON格式的数组，例如：
+只提取真正困难的词语 (3-8 个), 跳过简单词语如 "です"、"ます" 等。
+
+严格要求:
+1. 你的回复必须且只能是一个合法 JSON 数组, 不允许任何解释、问候、markdown 代码块。
+2. 不要在 JSON 前后写任何文字。
+3. 重复的 word 只保留第一个。
+
+返回格式示例 (注意: 这是示例, 你必须根据上面的文本生成对应内容):
 [
-  {{"word": "こんにちは", "meaning": "你好", "pronunciation": "konnichiwa"}},
-  {{"word": "世界", "meaning": "世界", "pronunciation": "sekai"}}
+  {{"word": "高校生", "meaning": "高中生"}},
+  {{"word": "逮捕", "meaning": "逮捕, 依法捉拿"}}
 ]
 
-文本：{text}"""
+文本: {text}"""
     try:
         log_with_time(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}]
         )
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
 
-        # 尝试解析JSON
-        if content.startswith('[') and content.endswith(']'):
-            vocab = json.loads(content)
+        # 1) 尝试严格 JSON 解析 (最常见路径)
+        vocab = _parse_vocab_json(content)
+        if vocab:
+            return vocab[:8]
 
-            # 过滤和验证结果
-            filtered_vocab = []
-            for item in vocab:
-                if isinstance(item, dict) and 'word' in item and 'meaning' in item and 'pronunciation' in item:
-                    word = item['word'].strip()
-                    meaning = item['meaning'].strip()
-                    pronunciation = item['pronunciation'].strip()
+        # 2) 失败: 尝试从 content 中剥出 JSON 子串 (AI 偶尔会加前言/后语)
+        #    找第一个 '[' 到最后一个 ']' 之间的内容
+        first = content.find('[')
+        last = content.rfind(']')
+        if first != -1 and last > first:
+            vocab = _parse_vocab_json(content[first:last + 1])
+            if vocab:
+                return vocab[:8]
 
-                    # 过滤掉英文单词和无效内容
-                    if (word and meaning and pronunciation and
-                        not word.isascii() and  # 确保是日语（包含非ASCII字符）
-                        len(word) > 1 and  # 跳过单字符
-                        not any(char.isdigit() for char in word) and  # 不包含数字
-                        word not in ['word', 'meaning', 'pronunciation', 'taifuu']):  # 过滤已知错误
-
-                        filtered_vocab.append({
-                            'word': word,
-                            'meaning': meaning,
-                            'pronunciation': pronunciation
-                        })
-
-            return filtered_vocab[:8]  # 限制最多8个词语
-
-        else:
-            # 如果不是JSON格式，尝试提取可能的日语词语
-            import re
-            # 只匹配包含汉字或平假名的词语
-            japanese_words = re.findall(r'["\']([^\x00-\x7F]{1,10})["\']', content)
-            filtered_words = []
-
-            for word in japanese_words:
-                word = word.strip()
-                if (len(word) > 1 and
-                    not any(char.isdigit() for char in word) and
-                    word not in ['word', 'meaning', 'pronunciation', 'taifuu']):
-                    filtered_words.append({
-                        'word': word,
-                        'meaning': '释义待补充',
-                        'pronunciation': '读音待补充'
-                    })
-
-            return filtered_words[:5]  # 限制最多5个词语
+        log_with_time(f"[AI] extract_vocabulary 解析失败, content={content[:200]!r}")
+        return []
 
     except Exception as e:
         log_with_time(f"[AI] extract_vocabulary failed: {e}")
         return []
+
+
+def _parse_vocab_json(raw: str) -> List[Dict]:
+    """把 AI 返回的 JSON 解析成 [{word, meaning}] 列表。
+
+    - 必须严格 JSON 数组
+    - 必须有 word / meaning 两个字段
+    - 丢掉所有 meaning 缺失/为空的项 (避免占位符)
+    - 同一 word 去重
+    """
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    seen = set()
+    out: List[Dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        word = (item.get("word") or "").strip()
+        meaning = (item.get("meaning") or "").strip()
+        # 过滤无效项
+        if not word or not meaning:
+            continue
+        if word.isascii() or len(word) <= 1:
+            continue
+        if any(ch.isdigit() for ch in word):
+            continue
+        if word in ('word', 'meaning', 'pronunciation'):
+            continue
+        if word in seen:
+            continue
+        # 释义是占位符 (如 "释义待补充" / "待补充" / "?") 视为无效
+        if meaning in PLACEHOLDER_MEANINGS:
+            continue
+        seen.add(word)
+        out.append({"word": word, "meaning": meaning})
+    return out
 
 
 def translate_to_chinese(text: str, model: str, client: openai.OpenAI) -> str:

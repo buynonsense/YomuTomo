@@ -387,7 +387,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
 
     # Stage 3b: htmx 提交走 form-encoded；其它客户端维持 JSON 协议不变。
     word = ""
-    pronunciation = None
     meaning = None
     article_id = None
     mastered = True
@@ -395,7 +394,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
     if is_htmx:
         form = await request.form()
         word = (form.get("word") or "").strip()
-        pronunciation = form.get("pronunciation") or None
         meaning = form.get("meaning") or None
         article_id_raw = form.get("article_id")
         try:
@@ -411,7 +409,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
         except Exception:
             return {"success": False, "error": "请求体格式不正确"}
         word = (payload.get("word") or "").strip()
-        pronunciation = payload.get("pronunciation")
         meaning = payload.get("meaning")
         mastered = bool(payload.get("mastered", True))
         article_id = payload.get("article_id")
@@ -421,7 +418,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
             db,
             user_id=user.id,
             word=word,
-            pronunciation=pronunciation,
             meaning=meaning,
             mastered=mastered,
             article_id=article_id,
@@ -432,7 +428,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
             return _vocab_toggle_form_response(
                 request,
                 word=word,
-                pronunciation=pronunciation,
                 meaning=meaning,
                 article_id=article_id,
                 current_mastered=1 if mastered else 0,
@@ -445,7 +440,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
             return _vocab_toggle_form_response(
                 request,
                 word=word,
-                pronunciation=pronunciation,
                 meaning=meaning,
                 article_id=article_id,
                 current_mastered=1 if mastered else 0,
@@ -457,7 +451,6 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
         return _vocab_toggle_form_response(
             request,
             word=entry.word,
-            pronunciation=pronunciation,
             meaning=meaning,
             article_id=article_id,
             current_mastered=1 if entry.status == "mastered" else 0,
@@ -474,7 +467,6 @@ def _vocab_toggle_form_response(
     request: Request,
     *,
     word: str,
-    pronunciation: Optional[str],
     meaning: Optional[str],
     article_id: Optional[int],
     current_mastered: int,
@@ -487,7 +479,6 @@ def _vocab_toggle_form_response(
         "partials/_vocab_toggle_form.html",
         {
             "word": word,
-            "pronunciation": pronunciation,
             "meaning": meaning,
             "article_id": article_id,
             "current_mastered": current_mastered,

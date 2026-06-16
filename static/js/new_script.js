@@ -228,7 +228,6 @@ function cacheContent() {
             title: document.getElementById('lesson-title')?.textContent || '',
             vocab: Array.from(document.querySelectorAll('.vocab-item')).map(v => ({
                 word: v.querySelector('.vocab-word')?.textContent || '',
-                pronunciation: v.querySelector('.vocab-pronunciation')?.textContent || '',
                 meaning: v.querySelector('.vocab-meaning')?.textContent || ''
             })),
             ts: Date.now()

@@ -10,18 +10,17 @@ htmx 用 outerHTML 把它替换回原 form 位置，实现"按一下切换"。
 HX-Trigger: vocab-toggled with {word, mastered}，前端用事件同步 .vocab-item 的 is-mastered class。
 #}
 {% set is_mastered = (current_mastered | int(default=0)) == 1 %}
-{% set button_label = "取消掌握" if is_mastered else "已掌握" %}
 <form class="vocab-toggle-form"
       hx-post="/vocabulary/toggle"
       hx-swap="outerHTML"
       hx-target="this"
       data-vocab-word="{{ word }}">
   <input type="hidden" name="word" value="{{ word }}" />
-  <input type="hidden" name="pronunciation" value="{{ pronunciation or '' }}" />
   <input type="hidden" name="meaning" value="{{ meaning or '' }}" />
   <input type="hidden" name="article_id" value="{{ article_id or '' }}" />
   <input type="hidden" name="current_mastered" value="{{ 1 if is_mastered else 0 }}" />
   <button type="submit"
-          class="btn-remove{% if is_mastered %} is-mastered{% endif %}"
-          data-vocab-action="toggle-mastered">{{ button_label }}</button>
+          class="vocab-master-btn{% if is_mastered %} is-mastered{% endif %}"
+          data-vocab-action="toggle-mastered"
+          aria-label="{{ '取消已掌握' if is_mastered else '标记为已掌握' }}">{{ '已掌握' if is_mastered else '标记掌握' }}</button>
 </form>

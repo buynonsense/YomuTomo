@@ -153,7 +153,6 @@ class PDFExporter {
     const vocabItems = Array.from(document.querySelectorAll('.vocab-item'));
 
     const vocabHTML = vocabItems.map(it => `<div style="border:1px solid #f8bbd9;background:#fce4ec;padding:6px 8px;border-radius:6px;">
-        <div style='font-size:11px;color:#880e4f;'>${it.querySelector('.vocab-pronunciation')?.textContent || ''}</div>
         <div style='font-size:13px;font-weight:600;color:#880e4f;'>${it.querySelector('.vocab-word')?.textContent || ''}</div>
         <div style='font-size:11px;color:#ad1457;'>${it.querySelector('.vocab-meaning')?.textContent || ''}</div>
     </div>`).join('');
