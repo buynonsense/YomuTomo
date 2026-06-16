@@ -5,6 +5,9 @@
 - 模板里有任务时（含 active 或 recent）才显示；完全空时由 hidden 隐藏
 - 服务端通过 HX-Trigger 头派发 queue-update 事件，前端据此更新导航繁忙态
 
+布局：每条任务一个 grid 三栏（标题 / 状态 / 时间），下方进度条 + 元信息。
+该布局在 `crawl-queue-item--compact` 容器里实现, 详见 new_style.css 中对应样式。
+
 输入 context:
 - active: list[CrawlTask]（pending / processing）
 - recent: list[CrawlTask]（completed / failed，最多 5 条）
@@ -39,8 +42,10 @@
     {% if active_count > 0 %}
       <li class="crawl-queue-section-label">进行中（{{ active_count }}）</li>
       {% for task in active %}
-        <li class="crawl-queue-item" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
-          <div class="crawl-queue-item__head">
+        {% set total = task.total_articles or 0 %}
+        {% set processed = task.processed_articles or 0 %}
+        <li class="crawl-queue-item crawl-queue-item--compact" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+          <div class="crawl-queue-item__row">
             <span class="crawl-queue-item__title">任务 #{{ task.id }}</span>
             <span class="crawl-queue-item__status is-{{ task.status }}">
               {% if task.status == 'pending' %}排队中
@@ -49,22 +54,24 @@
               {% elif task.status == 'failed' %}失败
               {% else %}{{ task.status or '未知' }}{% endif %}
             </span>
+            <span class="crawl-queue-item__time" title="北京时间">
+              {% if task.updated_at or task.created_at %}
+                {# 注意 Jinja2 优先级: | 优先于 or, 必须加括号, 否则 updated_at 真值时不过滤,
+                    原样打印 naive UTC datetime, 用户看到的不是北京时间。 #}
+                {{ (task.updated_at or task.created_at) | format_datetime }}
+              {% endif %}
+            </span>
           </div>
           <div class="crawl-queue-item__bar">
             <div class="crawl-queue-item__bar-fill" style="width: {{ task_progress_percent(task) }}%;"></div>
           </div>
           <div class="crawl-queue-item__meta">
-            {% set total = task.total_articles or 0 %}
-            {% set processed = task.processed_articles or 0 %}
             {% if total > 0 %}
               <span>{{ processed }} / {{ total }} 篇</span>
             {% elif task.status == 'pending' %}
               <span>等待开始</span>
             {% else %}
               <span>准备中…</span>
-            {% endif %}
-            {% if task.updated_at or task.created_at %}
-              <span>· 更新于 {{ task.updated_at or task.created_at | format_datetime }}</span>
             {% endif %}
             {% if task.message %}
               <div class="crawl-queue-item__message">{{ task.message }}</div>
@@ -76,8 +83,10 @@
     {% if recent and recent|length > 0 %}
       <li class="crawl-queue-section-label">最近完成</li>
       {% for task in recent[:5] %}
-        <li class="crawl-queue-item is-recent" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
-          <div class="crawl-queue-item__head">
+        {% set total = task.total_articles or 0 %}
+        {% set processed = task.processed_articles or 0 %}
+        <li class="crawl-queue-item crawl-queue-item--compact is-recent" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+          <div class="crawl-queue-item__row">
             <span class="crawl-queue-item__title">任务 #{{ task.id }}</span>
             <span class="crawl-queue-item__status is-{{ task.status }}">
               {% if task.status == 'pending' %}排队中
@@ -86,13 +95,18 @@
               {% elif task.status == 'failed' %}失败
               {% else %}{{ task.status or '未知' }}{% endif %}
             </span>
+            <span class="crawl-queue-item__time" title="北京时间">
+              {% if task.updated_at or task.created_at %}
+                {{ (task.updated_at or task.created_at) | format_datetime }}
+              {% endif %}
+            </span>
           </div>
-          <div class="crawl-queue-item__bar">
-            <div class="crawl-queue-item__bar-fill" style="width: {{ task_progress_percent(task) }}%;"></div>
-          </div>
+          {% if task.status == 'processing' %}
+            <div class="crawl-queue-item__bar">
+              <div class="crawl-queue-item__bar-fill" style="width: {{ task_progress_percent(task) }}%;"></div>
+            </div>
+          {% endif %}
           <div class="crawl-queue-item__meta">
-            {% set total = task.total_articles or 0 %}
-            {% set processed = task.processed_articles or 0 %}
             {% if total > 0 %}
               <span>{{ processed }} / {{ total }} 篇</span>
             {% endif %}

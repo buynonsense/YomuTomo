@@ -411,6 +411,169 @@
     btn.hidden = !visible;
   }
 
+  // --- 最近使用订阅源 (server-side 持久化) -------------------------------
+
+  const RECENT_SOURCES_ENDPOINT = '/api/recent_feed_sources';
+
+  function escapeAttr(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function shortenForChip(url) {
+    if (typeof url !== 'string' || !url) {
+      return '';
+    }
+    let s = url.replace(/^https?:\/\//, '');
+    if (s.length > 42) {
+      s = s.slice(0, 39) + '…';
+    }
+    return s;
+  }
+
+  function setRecentSourcesVisibility(hasItems) {
+    const root = document.getElementById('recent-sources');
+    if (!root) {
+      return;
+    }
+    if (hasItems) {
+      root.hidden = false;
+    }
+  }
+
+  function renderRecentSourcesChips(items) {
+    const container = document.getElementById('recent-sources-chips');
+    if (!container) {
+      return;
+    }
+    container.innerHTML = '';
+    const list = Array.isArray(items) ? items : [];
+    if (list.length === 0) {
+      const empty = document.createElement('span');
+      empty.className = 'recent-sources__empty';
+      empty.textContent = '暂无记录, 抓过一次订阅源后会在这里出现。';
+      container.appendChild(empty);
+      return;
+    }
+    list.forEach((item) => {
+      if (!item || typeof item.source_url !== 'string' || !item.source_url) {
+        return;
+      }
+      const chip = document.createElement('span');
+      chip.className = 'recent-sources__chip';
+      chip.setAttribute('role', 'listitem');
+      chip.setAttribute('data-recent-chip', '');
+      chip.setAttribute('data-source-url', item.source_url);
+      chip.title = item.source_url;
+
+      const label = document.createElement('span');
+      label.className = 'recent-sources__chip-label';
+      label.textContent = shortenForChip(item.source_url);
+      chip.appendChild(label);
+
+      if (item.use_count && item.use_count > 1) {
+        const count = document.createElement('span');
+        count.className = 'recent-sources__chip-count';
+        count.textContent = `×${item.use_count}`;
+        chip.appendChild(count);
+      }
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'recent-sources__chip-remove';
+      remove.setAttribute('aria-label', `移除 ${item.source_url}`);
+      remove.setAttribute('data-recent-chip-remove', '');
+      remove.textContent = '×';
+      chip.appendChild(remove);
+
+      container.appendChild(chip);
+    });
+  }
+
+  async function loadRecentSources() {
+    const root = document.getElementById('recent-sources');
+    if (!root) {
+      return;
+    }
+    try {
+      const response = await fetch(RECENT_SOURCES_ENDPOINT, { credentials: 'same-origin' });
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      if (!data || !data.success) {
+        return;
+      }
+      renderRecentSourcesChips(data.items || []);
+      setRecentSourcesVisibility(Array.isArray(data.items) && data.items.length > 0);
+    } catch (err) {
+      console.warn('加载最近订阅源失败', err);
+    }
+  }
+
+  async function deleteRecentSource(sourceUrl) {
+    try {
+      const response = await fetch(RECENT_SOURCES_ENDPOINT, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ source_url: sourceUrl })
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data || !data.success) {
+        notify((data && data.message) || '移除失败', 'error');
+        return;
+      }
+      renderRecentSourcesChips(data.items || []);
+      setRecentSourcesVisibility(Array.isArray(data.items) && data.items.length > 0);
+    } catch (err) {
+      console.error('移除最近订阅源失败', err);
+      notify('移除失败: 网络错误', 'error');
+    }
+  }
+
+  function bindRecentSourcesChips() {
+    const container = document.getElementById('recent-sources-chips');
+    if (!container) {
+      return;
+    }
+    container.addEventListener('click', function (event) {
+      const removeBtn = event.target.closest('[data-recent-chip-remove]');
+      if (removeBtn) {
+        event.stopPropagation();
+        event.preventDefault();
+        const chip = removeBtn.closest('[data-recent-chip]');
+        if (!chip) {
+          return;
+        }
+        const sourceUrl = chip.getAttribute('data-source-url') || '';
+        if (!sourceUrl) {
+          return;
+        }
+        deleteRecentSource(sourceUrl);
+        return;
+      }
+      const chip = event.target.closest('[data-recent-chip]');
+      if (!chip) {
+        return;
+      }
+      const sourceUrl = chip.getAttribute('data-source-url') || '';
+      if (!sourceUrl) {
+        return;
+      }
+      const input = document.getElementById('custom-url-input');
+      if (input) {
+        input.value = sourceUrl;
+        input.focus();
+      }
+      // 顺手触发一次预览, 与点击 chip 的"复用"语义一致
+      previewCustomUrl();
+    });
+  }
+
   // --- 预览 ------------------------------------------------------------
 
   function setPreviewPanelState(visible) {
@@ -585,6 +748,8 @@
       renderPreviewItems(data.items || [], data.source_url || customUrl);
       // 实时预览成功: 写入 localStorage (24h 内重开浏览器可见)
       savePreviewCache(data.source_url || customUrl, data.items || []);
+      // 服务端已经 record_usage 一次, 这里拉一次最新 chip 列表
+      loadRecentSources();
       notify(
         data.count > 0 ? `已预览 ${data.count} 条订阅内容` : (data.message || '未抓到可用条目'),
         data.count > 0 ? 'success' : 'warning'
@@ -641,6 +806,8 @@
     }
     formatNewsTimeElements(document);
     bindInitial();
+    bindRecentSourcesChips();
+    loadRecentSources();
 
     // 恢复上次预览 (24h 内的临时缓存)
     const cached = loadPreviewCache();

@@ -14,6 +14,12 @@ from app.services import services as service_module
 from app.services.notifications import create_notification
 from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
 from app.services.rsshub_feed import RSSHubFetchError, fetch_rsshub_feed_items, normalize_rsshub_source_url
+from app.services.recent_sources import (
+    MAX_RECENT_PER_USER,
+    list_recent_sources,
+    record_usage,
+    remove_source,
+)
 from app.utils.templates import create_templates
 from app.utils.time import datetime_to_isoformat, utc_now
 
@@ -166,6 +172,14 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
 
     try:
         items = fetch_rsshub_feed_items(normalized_source, limit=limit)
+        # 成功拿到结果再记录一次使用, 失败的源不污染最近列表
+        try:
+            record_usage(db, user_id=user.id, source_url=normalized_source)
+            db.commit()
+        except Exception as e:
+            # 记录失败不影响主流程
+            db.rollback()
+            log_with_time(f"⚠️ 记录最近订阅源失败 user_id={user.id}: {e}", level="WARNING")
         return {
             "success": True,
             "message": "已获取预览结果" if items else "未抓到可用条目",
@@ -180,6 +194,124 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         log_with_time(f"❌ 预览 RSS 订阅源失败 source_url={raw_source_url}: {e}")
         return {"success": False, "message": f"预览失败：{str(e)}", "items": [], "count": 0}
+
+
+@router.get("/api/recent_feed_sources", summary="获取当前用户的最近订阅源列表 (最多 5 条)")
+async def api_recent_feed_sources_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    limit: int = Query(MAX_RECENT_PER_USER, ge=1, le=20),
+):
+    """前端 /news_center 加载时调用, 拿到最近 5 条供 chip 渲染。"""
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "items": [], "message": "未登录"}
+
+    rows = list_recent_sources(db, user.id, limit=limit)
+    return {
+        "success": True,
+        "items": [
+            {
+                "source_url": row.source_url,
+                "use_count": row.use_count,
+                "last_used_at": datetime_to_isoformat(row.last_used_at),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/api/recent_feed_sources/record", summary="记录一次订阅源使用")
+async def api_recent_feed_sources_record(request: Request, db: Session = Depends(get_db)):
+    """用户主动点 chip / 重发预览时调用, 把订阅源记入"最近 5 条"。
+
+    正常情况下预览成功会自动记录 (preview_rsshub_feed), 这里给前端一个
+    手动入口, 用来在点击 chip 但未触达预览 API 时也能落库。
+    """
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "message": "未登录"}
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+
+    raw_source_url = None
+    if isinstance(payload, dict):
+        raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+    if not isinstance(raw_source_url, str) or not raw_source_url.strip():
+        return {"success": False, "message": "请提供有效的订阅源 URL"}
+
+    normalized = normalize_rsshub_source_url(raw_source_url) or raw_source_url.strip()
+    try:
+        record_usage(db, user_id=user.id, source_url=normalized)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log_with_time(f"❌ 记录最近订阅源失败 user_id={user.id}: {e}", level="ERROR")
+        return {"success": False, "message": f"记录失败: {e}"}
+
+    rows = list_recent_sources(db, user.id)
+    return {
+        "success": True,
+        "message": "已记录到最近订阅源",
+        "items": [
+            {
+                "source_url": row.source_url,
+                "use_count": row.use_count,
+                "last_used_at": datetime_to_isoformat(row.last_used_at),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.delete("/api/recent_feed_sources", summary="删除一条最近订阅源")
+async def api_recent_feed_sources_delete(request: Request, db: Session = Depends(get_db)):
+    """用户主动从 chip 列表里移除某条订阅源。
+
+    支持 query (DELETE ?source_url=...) 和 JSON body 两种方式。
+    """
+    user = require_login(request, db)
+    if not user:
+        return {"success": False, "message": "未登录"}
+
+    raw_source_url = request.query_params.get("source_url")
+    if not raw_source_url:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+
+    if not isinstance(raw_source_url, str) or not raw_source_url.strip():
+        return {"success": False, "message": "请提供有效的订阅源 URL"}
+
+    # 跟 record 路径保持一致: 必须经过 normalize, 否则 "https://x" 跟 "?format=json" 版会当两条
+    normalized = normalize_rsshub_source_url(raw_source_url) or raw_source_url.strip()
+    try:
+        removed = remove_source(db, user_id=user.id, source_url=normalized)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log_with_time(f"❌ 删除最近订阅源失败 user_id={user.id}: {e}", level="ERROR")
+        return {"success": False, "message": f"删除失败: {e}"}
+
+    rows = list_recent_sources(db, user.id)
+    return {
+        "success": True,
+        "removed": removed,
+        "items": [
+            {
+                "source_url": row.source_url,
+                "use_count": row.use_count,
+                "last_used_at": datetime_to_isoformat(row.last_used_at),
+            }
+            for row in rows
+        ],
+    }
 
 
 @router.get("/reading_result", response_class=HTMLResponse, summary="显示处理结果")

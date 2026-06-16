@@ -94,3 +94,29 @@ class Notification(Base):
     updated_at = Column(DateTime, default=utc_now, nullable=False)
 
     user = relationship("User")
+
+
+class RecentFeedSource(Base):
+    """用户最近用过的 RSSHub 订阅源, 最多保留 5 条 / 用户。
+
+    设计目的: 用户经常反复抓同一个订阅源, 每次都粘贴一遍很烦。
+    这里按 user 维护一份 (source_url -> last_used_at, use_count) 映射:
+    - 每次预览或爬取时调用 record_usage(user_id, source_url) 即可
+    - record_usage 会: 已存在则更新 last_used_at / use_count+=1, 不存在则插入
+    - 每次写入后, 同步删除该 user 排名 6 之后的旧记录, 保持 ≤ 5 条
+    - 前端 /news_center 拿这 5 条作为快速选择 chip
+    """
+    __tablename__ = "recent_feed_sources"
+    __table_args__ = (
+        UniqueConstraint("user_id", "source_url", name="uq_recent_feed_sources_user_url"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_url = Column(String(500), nullable=False)
+    use_count = Column(Integer, default=1, nullable=False)
+    last_used_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
+
+    user = relationship("User")
