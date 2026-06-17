@@ -218,18 +218,20 @@ def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dic
 def _is_transient_ai_error(err: Exception) -> bool:
     """判断 AI 调用异常是否值得重试。
 
-    优先按异常类型判断 (精确), 退而求其次按状态码/消息前缀。
-    不做模糊的子串匹配 (避免 "rate" 命中 "celebrate" 这类误判)。
+    优先级:
+    1. AIClientError.transient 标志: ai_client_async.py 在包装异常时已经
+       区分过瞬时 (timeout/网络/5xx/429) vs 永久 (4xx 配置错误), 这里
+       直接信任这个标志。这是最可靠的信号 — 不要去子串匹配 message。
+    2. 直接看到 httpx 瞬时异常 (兜底, 一般 AIClient 内部已经包过)。
+    3. 4xx / 解析失败等: 不重试, 浪费时间。
     """
-    # 连接层 / 超时层: httpx 与 openai sdk 都会抛这些
+    # 1) AIClientError 自带 transient 标志, 这是最准确的信号
+    if isinstance(err, AIClientError):
+        if err.transient:
+            return True
+        return False
+    # 2) 直连 httpx 瞬时异常 (理论上游 AIClient 都会包装, 这里是兜底)
     if isinstance(err, (httpx.TimeoutException, httpx.ConnectError, ConnectionError, TimeoutError)):
-        return True
-    # 5xx: openai 的 APIStatusError 有 status_code 字段
-    status = getattr(err, "status_code", None)
-    if isinstance(status, int) and 500 <= status < 600:
-        return True
-    # 429: 限流, 短暂重试有意义
-    if isinstance(status, int) and status == 429:
         return True
     return False
 
@@ -474,8 +476,35 @@ def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[
             raise Exception("AI生成超时：请求处理时间超过5分钟")
 
         except Exception as e:
-            # 重新抛出异常，保持质量优先原则
-            raise Exception(f"AI生成失败: {str(e)}")
+            # 重新抛出异常, 附带可操作的提示
+            if isinstance(e, AIClientError):
+                status = e.status_code
+                if e.transient and status and 500 <= status < 600:
+                    raise Exception(
+                        f"AI 服务端暂时不可用 (HTTP {status})，已自动重试，请稍后再试或换其他 AI 配置"
+                    ) from e
+                if e.transient:
+                    raise Exception(
+                        f"AI 接口超时，已自动重试仍失败，请检查网络或稍后再试"
+                    ) from e
+                if status:
+                    if status in (401, 403):
+                        raise Exception(
+                            f"AI 接口鉴权失败 (HTTP {status})，请检查 API Key 是否正确"
+                        ) from e
+                    if status == 429:
+                        raise Exception(
+                            "AI 接口调用次数超限 (HTTP 429)，请稍后再试或升级套餐"
+                        ) from e
+                    raise Exception(
+                        f"AI 接口返回错误 (HTTP {status})，请检查配置或稍后再试"
+                    ) from e
+                # transient=False 但也没 status_code: 通常是 4xx 解析失败之类
+                raise Exception(
+                    f"AI 接口调用失败：{str(e)}，请检查 API 配置"
+                ) from e
+            # 非 AIClientError, 保持原行为但去掉了 "AI生成失败:" 前缀的重复
+            raise Exception(f"AI 生成失败: {str(e)}")
 
 
 def generate_emoji(text: str, model: str, client: openai.OpenAI) -> str:

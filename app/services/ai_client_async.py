@@ -37,7 +37,20 @@ def _ai_retry_delay_seconds(attempt: int) -> float:
 
 
 class AIClientError(Exception):
-    pass
+    """AI 调用异常的统一包装。
+
+    Attributes:
+        transient: 标记底层错误是否是瞬时的 (timeout / 网络 / 5xx / 429),
+            上层应用可以根据这个标记决定是否重试。如果上层只看到
+            AIClientError, 没办法从 message 字符串反推是哪种错误 (旧实现
+            就是这种死局), 所以这里显式带上 transient 标志。
+        status_code: HTTP 状态码 (如果可获取)。None 表示无法确定 (例如超时)。
+    """
+
+    def __init__(self, message: str, *, transient: bool = False, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.transient = transient
+        self.status_code = status_code
 
 
 class AIClient:
@@ -187,12 +200,21 @@ class OpenAICompatClient(BaseClient):
                         full,
                         e,
                     )
-                    raise AIClientError("OpenAI 兼容接口请求超时，请稍后重试") from e
+                    # 内部已重试 N 次, 仍被同一种瞬时错误击败:
+                    # 上层应用层重试一般也没救 (上游就是慢/连不上),
+                    # 但接口契约要求带 transient 标志, 让调用方能区分
+                    raise AIClientError(
+                        "OpenAI 兼容接口请求超时，请稍后重试",
+                        transient=True,
+                    ) from e
                 except Exception as e:
                     logger.exception("OpenAICompatClient async chat failed")
                     msg = str(e)
+                    transient_flag = False
+                    status_code_hint: Optional[int] = None
                     try:
-                        # If this was an httpx HTTPStatusError, include response body for debugging
+                        # 如果是 HTTPStatusError (4xx / 5xx), 拆出 status_code
+                        # 5xx / 429 视为瞬时, 4xx 其余视为配置/权限问题
                         if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
                             resp = e.response
                             req_url = getattr(resp, 'url', None) or full
@@ -202,9 +224,22 @@ class OpenAICompatClient(BaseClient):
                             except Exception:
                                 body_text = '<could not read response body>'
                             msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                            status_code_hint = resp.status_code
+                            transient_flag = (
+                                resp.status_code == 429
+                                or 500 <= resp.status_code < 600
+                            )
+                        elif isinstance(e, _RETRYABLE_HTTPX_ERRORS):
+                            # 双保险: 走到这里说明 _RETRYABLE_HTTPX_ERRORS
+                            # 之外的小类 (不太可能发生, 但 httpx 类型在演进)
+                            transient_flag = True
                     except Exception:
                         pass
-                    raise AIClientError(msg) from e
+                    raise AIClientError(
+                        msg,
+                        transient=transient_flag,
+                        status_code=status_code_hint,
+                    ) from e
 
 
 class GeminiClient(BaseClient):
@@ -381,10 +416,15 @@ class GeminiClient(BaseClient):
                         full,
                         e,
                     )
-                    raise AIClientError("Gemini 接口请求超时，请稍后重试") from e
+                    raise AIClientError(
+                        "Gemini 接口请求超时，请稍后重试",
+                        transient=True,
+                    ) from e
                 except Exception as e:
                     logger.exception("GeminiClient async chat failed")
                     msg = str(e)
+                    transient_flag = False
+                    status_code_hint: Optional[int] = None
                     try:
                         if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
                             resp = e.response
@@ -394,6 +434,17 @@ class GeminiClient(BaseClient):
                             except Exception:
                                 body_text = '<could not read response body>'
                             msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                            status_code_hint = resp.status_code
+                            transient_flag = (
+                                resp.status_code == 429
+                                or 500 <= resp.status_code < 600
+                            )
+                        elif isinstance(e, _RETRYABLE_HTTPX_ERRORS):
+                            transient_flag = True
                     except Exception:
                         pass
-                    raise AIClientError(msg) from e
+                    raise AIClientError(
+                        msg,
+                        transient=transient_flag,
+                        status_code=status_code_hint,
+                    ) from e

@@ -386,20 +386,23 @@ async def process_text_async(
         # 使用多线程并发生成所有内容
         ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
     except Exception as e:
-        # 返回错误信息
+        # 返回错误信息。generate_all_content 已经把 AIClientError 转成可读的中文提示
+        # (例如 "AI 接口超时, 已自动重试仍失败" / "AI 接口鉴权失败 (HTTP 401), 请检查 API Key")
+        err_msg = str(e)
+        log_with_time(f"❌ 文章生成失败 user_id={user.id}: {err_msg}", level="ERROR")
         try:
             create_notification(
                 db,
                 user_id=user.id,
-                type="system_error",
-                title="系统报错",
-                message=f"文章生成失败：{str(e)}",
+                type="article_failed",
+                title="文章生成失败",
+                message=err_msg,
                 source_task_id=None,
                 source_url="/",
             )
         except Exception as notify_error:
             log_with_time(f"❌ 写入文章生成失败通知失败 user_id={user.id}: {notify_error}", level="ERROR")
-        return {"error": str(e)}
+        return {"error": err_msg}
 
     user = get_current_user(request, db)
     if user:

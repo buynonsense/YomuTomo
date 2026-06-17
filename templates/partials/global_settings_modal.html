@@ -4,6 +4,7 @@
      aria-hidden="true"
      x-data="settingsModal()"
      x-bind:aria-hidden="!isOpen"
+     x-bind:class="{ 'show': isOpen }"
      x-on:keydown.escape.window="if (isOpen) close()"
      x-on:htmx:after-request.window="handleHtmxAfterRequest($event)">
   <div class="modal-content settings-modal-content"
@@ -42,6 +43,7 @@
                data-settings-panel="ai"
                role="tabpanel"
                x-show="activeTab === 'ai'"
+               x-bind:class="{ 'is-active': activeTab === 'ai' }"
                x-bind:hidden="activeTab !== 'ai'">
         <div class="settings-section-header">
           <div class="settings-section-header__text">
@@ -89,6 +91,7 @@
                data-settings-panel="user"
                role="tabpanel"
                x-show="activeTab === 'user'"
+               x-bind:class="{ 'is-active': activeTab === 'user' }"
                x-bind:hidden="activeTab !== 'user'">
         <div class="config-header">
           <div>

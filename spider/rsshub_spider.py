@@ -226,6 +226,7 @@ def _save_articles_from_items(
 
     client = get_openai_client(user.openai_api_key, user.openai_base_url)
     processed_count = 0
+    last_ai_error: str | None = None  # 记录最后一次 AI 报错, 用于 failure 通知
 
     for item in items:
         try:
@@ -241,9 +242,15 @@ def _save_articles_from_items(
             db.commit()
             log_with_time(f"✅ 已处理 {processed_count}/{task.total_articles} 篇文章: {item.get('title')}")
         except AIClientError as e:
-            log_with_time(f"⚠️ 处理文章时 AI 请求失败，已跳过该条: {item.get('title')}, 错误: {e}")
+            # generate_all_content 内部已经把 AIClientError 转成可读中文 (例如
+            # "AI 接口超时..." / "AI 接口鉴权失败 (HTTP 401)..."), 直接透传
+            err_text = str(e)
+            last_ai_error = err_text
+            log_with_time(f"⚠️ 处理文章时 AI 请求失败，已跳过该条: {item.get('title')}, 错误: {err_text}")
             continue
         except Exception as e:
+            err_text = f"AI 生成失败: {e}"
+            last_ai_error = err_text
             log_with_time(f"❌ 处理文章失败: {item.get('title')}, 错误: {e}")
             import traceback
 
@@ -269,19 +276,21 @@ def _save_articles_from_items(
             log_with_time(f"❌ 写入新闻成功通知失败 task_id={task.id}: {e}", level="ERROR")
         return _build_crawl_result(True, success_message, task.id, processed_count)
 
+    # 全部失败: 如果是因为 AI 报错, 用真实原因替换通用提示
+    final_failure_message = last_ai_error or failure_message
     try:
         create_notification(
             db,
             user_id=user_id,
             type="news_failed",
             title="新闻生成失败",
-            message=failure_message,
+            message=final_failure_message,
             source_task_id=task.id,
             source_url="/news_center",
         )
     except Exception as e:
         log_with_time(f"❌ 写入新闻失败通知失败 task_id={task.id}: {e}", level="ERROR")
-    return _build_crawl_result(False, failure_message, task.id, processed_count)
+    return _build_crawl_result(False, final_failure_message, task.id, processed_count)
 
 
 def get_houkago_news():

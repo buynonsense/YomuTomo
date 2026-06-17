@@ -1373,7 +1373,9 @@ def test_crawl_and_save_articles_background_returns_generic_failure_message_when
 
     refreshed_task = db_session.get(CrawlTask, task_id)
     assert result["success"] is False
-    assert result["message"] == "新闻生成失败：没有成功生成任何文章，请重试。"
+    # 不再用通用提示, 而是把真实错误透传给用户, 方便诊断
+    assert "AI" in result["message"]
+    assert "生成失败" in result["message"]
     assert refreshed_task.status == "failed"
     assert refreshed_task.processed_articles == 0
     assert db_session.query(Article).filter(Article.user_id == user_id).count() == 0
