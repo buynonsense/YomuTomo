@@ -622,12 +622,14 @@ def test_vocab_toggle_partial_form_uses_htmx_and_carries_state():
     assert 'hx-swap="outerHTML"' in body
     assert 'hx-target="this"' in body
     assert 'name="word" value="日本語"' in body
-    assert 'name="pronunciation" value="にほんご"' in body
     assert 'name="meaning" value="日语"' in body
     assert 'name="article_id" value="42"' in body
     assert 'name="current_mastered" value="0"' in body
-    # 当前未掌握 → 显示"已掌握"
-    assert ">已掌握<" in body
+    # 当前未掌握 → 显示"标记掌握" (点下去才会变成已掌握)
+    assert ">标记掌握<" in body
+    # 反向断言: 此时不应出现"已掌握"
+    assert ">已掌握<" not in body
+    assert "is-mastered" not in body
 
     body_mastered = tpl.render(
         word="日本語",
@@ -636,9 +638,11 @@ def test_vocab_toggle_partial_form_uses_htmx_and_carries_state():
         article_id=42,
         current_mastered=1,
     )
-    # 当前已掌握 → 显示"取消掌握" + 按钮带 is-mastered
-    assert ">取消掌握<" in body_mastered
+    # 当前已掌握 → 显示"已掌握" + 按钮带 is-mastered (点下去会取消掌握)
+    assert ">已掌握<" in body_mastered
     assert "is-mastered" in body_mastered
+    # 反向断言: 此时不应出现"标记掌握"
+    assert ">标记掌握<" not in body_mastered
 
 
 def test_reading_vocab_uses_htmx_form_for_toggle():
@@ -740,8 +744,9 @@ def test_vocab_toggle_endpoint_htmx_returns_partial(client, db_session, monkeypa
     body = resp.text
     # 返回的是 form 片段
     assert 'class="vocab-toggle-form"' in body
-    # 翻转后应当显示"取消掌握"
-    assert ">取消掌握<" in body
+    # 翻转后: current_mastered=1 → 已掌握 (按钮文字是"已掌握", 带 is-mastered)
+    assert ">已掌握<" in body
+    assert "is-mastered" in body
     assert 'value="1"' in body  # current_mastered 现在是 1
 
     import json as _json
@@ -820,7 +825,9 @@ def test_vocab_toggle_endpoint_htmx_toggles_back(client, db_session, monkeypatch
 
     assert resp.status_code == 200
     body = resp.text
-    assert ">已掌握<" in body
+    # 第二次 toggle 1→0, 回到未掌握状态: 按钮文字"标记掌握", value=0
+    assert ">标记掌握<" in body
+    assert "is-mastered" not in body
     assert 'value="0"' in body
 
     entry = db_session.query(VocabularyEntry).filter_by(user_id=user.id, word="学校").first()

@@ -44,6 +44,45 @@ _load_app_package()
 collect_ignore_glob = ['e2e/*']
 
 
+def pytest_ignore_collect(collection_path, config):
+    """e2e tests must not be picked up by `pytest tests/`.
+
+    collect_ignore_glob is per-directory, but the e2e conftest re-opens the
+    ignore list as soon as pytest descends into tests/e2e for collection,
+    which causes e2e tests to leak into the default run. This hook enforces
+    the ignore based on the explicit CLI testpath: only run e2e when the user
+    pointed pytest at tests/e2e directly (or used -m e2e).
+    """
+    import os
+
+    try:
+        from pathlib import Path
+
+        path = Path(str(collection_path))
+    except Exception:
+        return False
+
+    # Only act on files inside tests/e2e
+    try:
+        rel = path.resolve().relative_to(pathlib.Path(__file__).resolve().parent / 'e2e')
+    except (ValueError, FileNotFoundError):
+        return False
+    if not rel.parts:
+        return False
+
+    # Allow when the user explicitly listed tests/e2e on the CLI
+    args = getattr(config, 'args', []) or []
+    for arg in args:
+        a = str(arg)
+        if a.endswith('/e2e') or a.endswith('/e2e/') or a == 'e2e' or '/e2e/' in a or a.endswith('e2e'):
+            return False
+    # Allow when running with -m e2e
+    markers = getattr(config, 'markers', []) or []
+    if 'e2e' in (getattr(config.option, 'markexpr', '') or ''):
+        return False
+    return True
+
+
 @pytest.fixture()
 def test_engine(monkeypatch: pytest.MonkeyPatch):
     from app import db as app_db
