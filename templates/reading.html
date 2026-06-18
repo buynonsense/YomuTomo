@@ -144,6 +144,16 @@
                   <div class="vocab-word">{{ item.word }}</div>
                   <button type="button" class="vocab-speak-btn" data-vocab-action="speak" aria-label="朗读生词" title="朗读">📢</button>
                 </div>
+                {% set _reading = (item.reading or '')|trim %}
+                {% set _romaji = (item.romaji or '')|trim %}
+                {% if _reading or _romaji %}
+                <div class="vocab-pronunciation">
+                  {% if _reading %}<span class="vocab-pronunciation__label">假名</span><span class="vocab-pronunciation__reading">{{ _reading }}</span>{% endif %}
+                  {% if _romaji %}<span class="vocab-pronunciation__label">罗马音</span><span class="vocab-pronunciation__romaji">{{ _romaji }}</span>{% endif %}
+                </div>
+                {% else %}
+                <div class="vocab-pronunciation vocab-pronunciation--missing">— 无假名信息 —</div>
+                {% endif %}
                 {% set _cleaned_meaning = item.meaning | clean_meaning %}
                 {% if _cleaned_meaning %}
                 <div class="vocab-meaning">释义：{{ _cleaned_meaning }}</div>

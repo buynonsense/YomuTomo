@@ -1045,14 +1045,60 @@ rt {
   font-size: 0.9rem;
   color: var(--text-secondary);
   font-style: italic;
-  order: 1;
+  order: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  line-height: 1.3;
 }
+
+.vocab-pronunciation__label {
+  color: var(--text-tertiary, #999);
+  font-style: normal;
+  font-size: 0.78rem;
+}
+
+.vocab-pronunciation__reading {
+  color: var(--primary-color);
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.vocab-pronunciation__romaji {
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  letter-spacing: 0.5px;
+}
+
+.vocab-pronunciation--missing {
+  color: var(--text-tertiary, #999);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* .vocab-item 是 flex column, 必须给所有直接子元素显式 order
+   否则 default order 0 会跟 order: 1/2/3 混在一起, 出现"标记掌握"按钮
+   跑到顶部这种诡异布局。顺序固定:
+     1. 单词行 (word + 喇叭)
+     2. 假名 / 罗马音
+     3. 释义
+     4. 标记掌握按钮表单
+*/
+.vocab-item > .vocab-word-row { order: 1; }
+.vocab-item > .vocab-pronunciation { order: 2; }
+.vocab-item > .vocab-meaning { order: 3; }
+.vocab-item > .vocab-meta { order: 4; }
+.vocab-item > .vocab-toggle-form { order: 5; }
+.vocab-item > .vocab-word { order: 1; }  /* 兼容旧模板: 没包 vocab-word-row */
 
 .vocab-word {
   font-size: 1.3rem;
   font-weight: 600;
   color: var(--primary-color);
-  order: 2;
 }
 
 /* 单词 + 喇叭按钮 同行摆放: 单词占主, 喇叭是圆形小按钮贴右 */
@@ -1061,11 +1107,9 @@ rt {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  order: 2;
 }
 
 .vocab-word-row .vocab-word {
-  order: initial;
   flex: 1 1 auto;
   min-width: 0;
   word-break: break-word;
@@ -1143,13 +1187,6 @@ rt {
 
 .vocab-meaning__dash {
   letter-spacing: 2px;
-}
-
-/* 彻底不再渲染"读音"。模板已经不再输出 .vocab-pronunciation,
-   这里兜底: 万一旧数据 / 旧 fragment 漏过来, 也直接隐藏 (只针对
-   元素本身, 不会误杀父卡片)。*/
-.vocab-pronunciation {
-  display: none !important;
 }
 
 /* 生词 "已掌握 / 标记掌握" 按钮: 必须一眼能看出是按钮 + 当前状态

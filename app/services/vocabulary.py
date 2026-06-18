@@ -2,10 +2,25 @@ from __future__ import annotations
 
 from typing import Iterable
 
+import pykakasi
 from sqlalchemy.orm import Session
 
 from app.model.models import Article, VocabularyEntry
 from app.utils.time import datetime_to_isoformat, utc_now
+
+
+_kks = pykakasi.kakasi()
+
+
+def _reading_to_romaji(reading: str) -> str:
+    """把假名读音机械转成罗马字 (hepburn)。失败返回 ''。"""
+    if not reading:
+        return ""
+    try:
+        parts = _kks.convert(reading)
+    except Exception:
+        return ""
+    return "".join((p.get("hepburn") or "") for p in parts).strip()
 
 
 def _normalize_word(word: str) -> str:
@@ -162,11 +177,18 @@ def build_vocabulary_view_rows(
 
     view_rows: list[dict] = []
     for entry in entries:
+        # pronunciation 字段现在存的是假名 reading (AI 给的优先, 旧条目为空)
+        # romaji 由 pykakasi 机械从 reading 算出
+        reading = entry.pronunciation or ''
+        romaji = _reading_to_romaji(reading) if reading else ''
         view_rows.append(
             {
                 'id': entry.id,
                 'word': entry.word,
-                'pronunciation': entry.pronunciation or '',
+                'reading': reading,
+                'romaji': romaji,
+                # 兼容旧字段名 (vocabulary.js 仍读 pronunciation)
+                'pronunciation': reading,
                 'meaning': entry.meaning or '',
                 'status': entry.status,
                 'article_id': entry.article_id,

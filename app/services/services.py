@@ -124,35 +124,59 @@ def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
 def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
     """从日语文本中提取生词。
 
-    返回 [{word, meaning}] 列表, meaning 必须由 AI 生成 (中文)。
+    返回 [{word, reading, meaning}] 列表, meaning 必须由 AI 生成 (中文)。
 
-    强约束:
-    - 只返回 JSON 数组, 不返回任何解释/前言
-    - 每个词必须带中文 meaning (没有就跳过这个, 不要留空)
-    - 不再要求 pronunciation (用户不要读音)
+    - reading 是该词的【假名读音】(平假名 / カタカナ都可, 优先平假名)
+    - meaning 是该词的【字典义】(不要文章场景义)
+    - romaji 不由 AI 生成, 由 _reading_to_romaji 机械算出
     """
-    prompt = f"""分析以下日语文本, 提取出可能对初学者或中级学习者困难的词语。
-重点提取:
-- 汉字复合词
+    prompt = f"""你是日语教师 + 日中词典编者。请从以下日语文本中提取对初学者/中级学习者有难度的生词。
+
+【选词标准】重点提取:
+- 汉字复合词 (2 字及以上)
 - 生僻词语
 - 专业术语
-- 不常见的表达
+- 不常见的表达 / 惯用搭配
+- 多义词 (优先常见义项)
 
-对于每个词语, 请提供:
+跳过: 助词、简单助动词 ("です" "ます" "ある" 等)、常见 N5 单词。
+
+【每个词必填字段】:
 - word: 日语词语 (必须是日语, 不要包含英文)
-- meaning: 中文释义 (必须给出, 5-15 字, 不要空着)
+- reading: 该词的【假名读音】(汉字词写平假名, 外来语用片假名, 5-15 字符)
+- meaning: 中文释义 (字典义, 5-25 字)
 
-只提取真正困难的词语 (3-8 个), 跳过简单词语如 "です"、"ます" 等。
+reading 示例:
+- "高校生" → reading: "こうこうせい"
+- "逮捕"   → reading: "たいほ"
+- "サミット" → reading: "サミット" (片假名)
+- "食べる" → reading: "たべる"
 
-严格要求:
-1. 你的回复必须且只能是一个合法 JSON 数组, 不允许任何解释、问候、markdown 代码块。
+【释义要求 - 严格】:
+- meaning 必须是该词的【字典义 / 词义】(类似广辞苑 / 百度日语词典会收录的)
+- 写法: "词义1; 词义2; 词义3" (用中文分号分隔多个义项, 5-25 字)
+- ❌ 不要写 "在本文中……" / "文中指……" / "本文里的……" / "此处……" 这类场景义
+- ❌ 不要复述文章原句当释义
+- ✅ 给通用、可独立于本文理解的词典式解释
+
+例如:
+- "高校生" → "高中生; 高等中学的学生"
+- "逮捕" → "逮捕; 依法捉拿犯罪嫌疑人"
+- "サミット" → "首脑会议; 各国元首的高层会谈"
+- "言及" → "言及; 提及, 谈到"
+
+【输出格式 - 严格】:
+1. 回复必须且只能是一个合法 JSON 数组, 不允许任何解释/问候/markdown 代码块。
 2. 不要在 JSON 前后写任何文字。
 3. 重复的 word 只保留第一个。
+4. 只提取 3-8 个真正困难的词语, 宁缺毋滥。
 
-返回格式示例 (注意: 这是示例, 你必须根据上面的文本生成对应内容):
+格式示例:
 [
-  {{"word": "高校生", "meaning": "高中生"}},
-  {{"word": "逮捕", "meaning": "逮捕, 依法捉拿"}}
+  {{"word": "高校生", "reading": "こうこうせい", "meaning": "高中生; 高等中学的学生"}},
+  {{"word": "逮捕", "reading": "たいほ", "meaning": "逮捕; 依法捉拿犯罪嫌疑人"}},
+  {{"word": "サミット", "reading": "サミット", "meaning": "首脑会议; 各国元首的高层会谈"}},
+  {{"word": "言及", "reading": "げんきゅう", "meaning": "提及, 谈到"}}
 ]
 
 文本: {text}"""
@@ -287,17 +311,44 @@ def _extract_japanese_words_fallback(content: str) -> List[Dict]:
         if any(ch in _chinese_particles for ch in word):
             continue
         seen.add(word)
-        out.append({"word": word, "meaning": None})
+        # 兜底路径没有 AI 释义, 但仍然用 pykakasi 算出 reading/romaji,
+        # 这样卡片至少能显示假名+罗马音
+        try:
+            reading = "".join(
+                p.get("hira") or p.get("kana") or "" for p in kks.convert(word)
+            ).strip()
+        except Exception:
+            reading = ""
+        out.append({
+            "word": word,
+            "reading": reading,
+            "romaji": _reading_to_romaji(reading),
+            "pronunciation": reading,
+            "meaning": None,
+        })
+    return out
+
+
+def _reading_to_romaji(reading: str) -> str:
+    """把假名读音机械转成罗马字 (hepburn)。失败返回 ''。"""
+    if not reading:
+        return ""
+    try:
+        parts = kks.convert(reading)
+    except Exception:
+        return ""
+    out = "".join((p.get("hepburn") or "") for p in parts).strip()
     return out
 
 
 def _parse_vocab_json(raw: str) -> List[Dict]:
-    """把 AI 返回的 JSON 解析成 [{word, meaning}] 列表。
+    """把 AI 返回的 JSON 解析成 [{word, reading, meaning, romaji}] 列表。
 
     - 必须严格 JSON 数组
-    - 必须有 word / meaning 两个字段
-    - 丢掉所有 meaning 缺失/为空的项 (避免占位符)
+    - 必须有 word / meaning 两个字段; reading 字段强烈推荐 (用户要假名+罗马音)
+    - 释义是占位符 (如 "释义待补充" / "?") 视为无效
     - 同一 word 去重
+    - romaji 由 _reading_to_romaji 从 reading 机械算出; reading 缺失时从 word 兜底
     """
     try:
         data = json.loads(raw)
@@ -319,7 +370,7 @@ def _parse_vocab_json(raw: str) -> List[Dict]:
             continue
         if any(ch.isdigit() for ch in word):
             continue
-        if word in ('word', 'meaning', 'pronunciation'):
+        if word in ('word', 'meaning', 'pronunciation', 'reading'):
             continue
         if word in seen:
             continue
@@ -327,7 +378,24 @@ def _parse_vocab_json(raw: str) -> List[Dict]:
         if meaning in PLACEHOLDER_MEANINGS:
             continue
         seen.add(word)
-        out.append({"word": word, "meaning": meaning})
+        # 优先用 AI 给的 reading, 缺失时 pykakasi 从 word 兜底 (compound 不准但有显示)
+        reading = (item.get("reading") or "").strip()
+        if not reading:
+            try:
+                reading = "".join(
+                    p.get("hira") or p.get("kana") or "" for p in kks.convert(word)
+                ).strip()
+            except Exception:
+                reading = ""
+        romaji = _reading_to_romaji(reading) if reading else ""
+        out.append({
+            "word": word,
+            "reading": reading,
+            "romaji": romaji,
+            # 兼容旧字段名 (vocabulary.py seed 仍读 pronunciation)
+            "pronunciation": reading,
+            "meaning": meaning,
+        })
     return out
 
 
