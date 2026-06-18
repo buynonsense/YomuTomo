@@ -19,7 +19,9 @@ def normalize_http_url(value: object) -> str | None:
         return None
 
     path = parsed.path or "/"
-    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment)
+    )
 
 
 def is_safe_internal_path(value: object) -> bool:

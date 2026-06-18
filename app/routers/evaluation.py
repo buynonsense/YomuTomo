@@ -2,9 +2,9 @@ import difflib
 import re
 from html import escape
 
+import pykakasi
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse
-import pykakasi
 
 router = APIRouter(prefix="", tags=["评测"])
 
@@ -29,10 +29,12 @@ def normalize_to_hiragana(text: str) -> str:
 def _collapse_for_compare(text: str) -> str:
     """去掉空白与常见标点，让评分更关注实际发音。"""
     if not text:
-      return ""
+        return ""
 
     cleaned = re.sub(r"[\s\u3000]+", "", text)
-    cleaned = re.sub(r"[、。！？?!.,，；;：:「」『』（）()【】\[\]{}〈〉《》·・…-]", "", cleaned)
+    cleaned = re.sub(
+        r"[、。！？?!.,，；;：:「」『』（）()【】\[\]{}〈〉《》·・…-]", "", cleaned
+    )
     return cleaned
 
 
@@ -141,20 +143,27 @@ def calculate_similarity(left: str, right: str) -> float:
 
 
 @router.post("/evaluate", summary="朗读评测")
-async def evaluate(original: str = Form(..., description="原始日语文本"), recognized: str = Form(..., description="语音识别得到的文本")):
+async def evaluate(
+    original: str = Form(..., description="原始日语文本"),
+    recognized: str = Form(..., description="语音识别得到的文本"),
+):
     original_clean = _collapse_for_compare(original)
     recognized_clean = _collapse_for_compare(recognized)
     original_similarity = calculate_similarity(original_clean, recognized_clean)
-    kana_similarity = calculate_similarity(normalize_to_hiragana(original_clean), normalize_to_hiragana(recognized_clean))
+    kana_similarity = calculate_similarity(
+        normalize_to_hiragana(original_clean), normalize_to_hiragana(recognized_clean)
+    )
     diff_html = _build_diff_html(original, recognized)
 
     similarity = max(original_similarity, kana_similarity)
     score = int(similarity * 100)
 
-    return JSONResponse({
-        "score": score,
-        "similarity": similarity,
-        "original_similarity": original_similarity,
-        "kana_similarity": kana_similarity,
-        **diff_html,
-    })
+    return JSONResponse(
+        {
+            "score": score,
+            "similarity": similarity,
+            "original_similarity": original_similarity,
+            "kana_similarity": kana_similarity,
+            **diff_html,
+        }
+    )

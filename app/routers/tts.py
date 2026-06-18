@@ -23,13 +23,14 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.services.tts import TTSError, get_tts_service
 
-
 router = APIRouter(prefix="/api", tags=["TTS"])
 
 
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000, description="要合成的文本")
-    speed: float = Field(default=None, ge=0.1, le=5.0, description="语速倍率，默认从 settings 读")
+    speed: float = Field(
+        default=None, ge=0.1, le=5.0, description="语速倍率，默认从 settings 读"
+    )
     language: Optional[str] = Field(default=None, description="语言代码，默认 JP")
 
 
@@ -72,6 +73,10 @@ async def synthesize_tts(request: Request, payload: TTSRequest = Body(...)):
         filename=f"tts-{language}.wav",
         headers={
             "Cache-Control": "public, max-age=31536000, immutable",
-            "X-TTS-Cache": "hit" if service.get_cached_path(text, speed, language) == path else "miss",
+            "X-TTS-Cache": (
+                "hit"
+                if service.get_cached_path(text, speed, language) == path
+                else "miss"
+            ),
         },
     )

@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.core.config import settings
@@ -30,6 +30,7 @@ def _log(message: str, level: str = "INFO") -> None:
 
 try:
     from melo.api import TTS as _MeloTTS
+
     _MELOTTS_IMPORT_ERROR: Optional[Exception] = None
 except Exception as exc:  # noqa: BLE001 - import-time guard
     _MeloTTS = None
@@ -161,10 +162,15 @@ class MeloTTSService:
 
         engine = _pick_quantized_engine()
         if engine is None:
-            _log("[TTS] 没有任何 qengine 可用（qnnpack/fbgemm 均不支持），跳过量化", level="WARN")
+            _log(
+                "[TTS] 没有任何 qengine 可用（qnnpack/fbgemm 均不支持），跳过量化",
+                level="WARN",
+            )
             return
 
-        _log(f"[TTS] 应用 int8 动态量化 language={language} qengine={engine}（Linear → qint8）")
+        _log(
+            f"[TTS] 应用 int8 动态量化 language={language} qengine={engine}（Linear → qint8）"
+        )
         # MeloTTS TTS 实例内部真正的 nn.Module 是 model.model
         target = getattr(model, "model", model)
         before_params = sum(p.numel() for p in target.parameters())
@@ -194,6 +200,7 @@ class MeloTTSService:
         跳过 fp32 checkpoint 的 torch.load，省 199MB 磁盘读 + 反序列化时间。
         """
         import torch
+
         sidecar = self._int8_path(language)
         if not os.path.exists(sidecar):
             return False
@@ -224,7 +231,9 @@ class MeloTTSService:
             model = self._models.get(language)
             if model is not None:
                 return model
-            _log(f"[TTS] 加载 MeloTTS 模型 language={language} device={self._device}（首次约 30-60s）")
+            _log(
+                f"[TTS] 加载 MeloTTS 模型 language={language} device={self._device}（首次约 30-60s）"
+            )
             # 先按 melo 内部流程构建/反序列化 checkpoint
             model = _MeloTTS(language=language, device=self._device)
             # 优先用 sidecar 走 int8 路径；没有就现量化、然后落盘
@@ -291,7 +300,9 @@ class MeloTTSService:
             )
         spk_id = speaker_ids[language]
 
-        _log(f"[TTS] synthesize key={key[:10]} text_len={len(text)} speed={speed} lang={language}")
+        _log(
+            f"[TTS] synthesize key={key[:10]} text_len={len(text)} speed={speed} lang={language}"
+        )
         # 串行化推理：MeloTTS / torch 不是并发安全的
         with self._infer_lock:
             model.tts_to_file(text, spk_id, path, speed=speed)

@@ -8,6 +8,7 @@
 设计: 直接走 SQL 而不是缓存, 因为读路径也是同一张表 (不取多)。
 每次写入 (record_usage) 后顺手 trim, 保持单用户 ≤ 5 条, 不会无限增长。
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -32,7 +33,9 @@ def _normalize_source_url(url: str) -> str:
     return (url or "").strip().rstrip("/")
 
 
-def list_recent_sources(db: Session, user_id: int, limit: int = MAX_RECENT_PER_USER) -> List[RecentFeedSource]:
+def list_recent_sources(
+    db: Session, user_id: int, limit: int = MAX_RECENT_PER_USER
+) -> List[RecentFeedSource]:
     """返回当前用户最近用过的订阅源, 按 last_used_at 降序。"""
     return (
         db.query(RecentFeedSource)
@@ -43,7 +46,9 @@ def list_recent_sources(db: Session, user_id: int, limit: int = MAX_RECENT_PER_U
     )
 
 
-def record_usage(db: Session, user_id: int, source_url: str) -> Optional[RecentFeedSource]:
+def record_usage(
+    db: Session, user_id: int, source_url: str
+) -> Optional[RecentFeedSource]:
     """记录一次使用, 并 trim 排名 > 5 的旧记录。
 
     行为:

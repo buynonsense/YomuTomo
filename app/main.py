@@ -1,25 +1,21 @@
-from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 
 # 加载环境变量
 load_dotenv()
 from app.core.config import settings
-from app.db import engine, Base
-from app.routers import pages
-from app.routers import auth
-from app.routers import articles
-from app.routers import evaluation
-from app.routers import notifications
+from app.db import Base, engine
+from app.routers import articles, auth, evaluation, notifications, pages
 from app.routers import tts as tts_router
 from app.services.notifications import create_notification
 
@@ -31,11 +27,15 @@ class ExtensionCompatibilityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # 为HTML页面添加有助于密码管理器的头
-        if request.url.path in ['/login', '/register'] and isinstance(response, Response):
-            response.headers['X-Frame-Options'] = 'DENY'
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-            response.headers['Permissions-Policy'] = 'clipboard-write=(), clipboard-read=()'
+        if request.url.path in ["/login", "/register"] and isinstance(
+            response, Response
+        ):
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = (
+                "clipboard-write=(), clipboard-read=()"
+            )
 
         return response
 
@@ -46,12 +46,12 @@ class HtmxRequestMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # htmx 默认在所有 ajax 请求上设置 HX-Request: true
         # https://htmx.org/reference/#request_headers
-        request.state.htmx = request.headers.get('HX-Request', '').lower() == 'true'
+        request.state.htmx = request.headers.get("HX-Request", "").lower() == "true"
         # 透传一些常用的 htmx 头，便于端点做更细粒度控制
-        request.state.htmx_target = request.headers.get('HX-Target', '')
-        request.state.htmx_trigger = request.headers.get('HX-Trigger', '')
-        request.state.htmx_trigger_name = request.headers.get('HX-Trigger-Name', '')
-        request.state.htmx_current_url = request.headers.get('HX-Current-URL', '')
+        request.state.htmx_target = request.headers.get("HX-Target", "")
+        request.state.htmx_trigger = request.headers.get("HX-Trigger", "")
+        request.state.htmx_trigger_name = request.headers.get("HX-Trigger-Name", "")
+        request.state.htmx_current_url = request.headers.get("HX-Current-URL", "")
         return await call_next(request)
 
 
@@ -63,11 +63,13 @@ tags_metadata = [
     {"name": "评测", "description": "朗读评测接口。"},
 ]
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 延续之前自动建表的行为（仍推荐使用 Alembic 管理迁移）
     # 增加数据库连接重试，避免容器初次启动时短暂不可用导致直接退出
     import sqlalchemy
+
     retries = int(os.getenv("DB_CONNECT_RETRIES", "10"))
     delay = float(os.getenv("DB_CONNECT_DELAY", "3"))
     last_err = None
@@ -75,15 +77,21 @@ async def lifespan(app: FastAPI):
         try:
             Base.metadata.create_all(bind=engine)
             if attempt > 1:
-                logging.getLogger("startup").info(f"DB connect succeeded after {attempt} attempts")
+                logging.getLogger("startup").info(
+                    f"DB connect succeeded after {attempt} attempts"
+                )
             break
         except sqlalchemy.exc.OperationalError as e:
             last_err = e
-            logging.getLogger("startup").warning(f"DB connect attempt {attempt}/{retries} failed: {e}")
+            logging.getLogger("startup").warning(
+                f"DB connect attempt {attempt}/{retries} failed: {e}"
+            )
             await asyncio.sleep(delay)
     else:
         # TODO[TechDebt]: 直接 raise 仍会导致应用退出；后续可改为健康检查失败而非崩溃，或暴露 /startup-wait 诊断端点
-        logging.getLogger("startup").error("DB connect failed after retries, raising exception")
+        logging.getLogger("startup").error(
+            "DB connect failed after retries, raising exception"
+        )
         raise last_err
 
     yield
@@ -140,7 +148,11 @@ async def system_error_notification_middleware(request: Request, call_next):
 
             db = SessionLocal()
             try:
-                user_id = request.session.get("user_id") if hasattr(request, "session") else None
+                user_id = (
+                    request.session.get("user_id")
+                    if hasattr(request, "session")
+                    else None
+                )
                 if user_id:
                     create_notification(
                         db,
@@ -158,6 +170,7 @@ async def system_error_notification_middleware(request: Request, call_next):
 
         raise
 
-@app.get('/health')
+
+@app.get("/health")
 def health():
-    return {'status': 'ok'}
+    return {"status": "ok"}

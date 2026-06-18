@@ -47,7 +47,13 @@ class AIClientError(Exception):
         status_code: HTTP 状态码 (如果可获取)。None 表示无法确定 (例如超时)。
     """
 
-    def __init__(self, message: str, *, transient: bool = False, status_code: Optional[int] = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        transient: bool = False,
+        status_code: Optional[int] = None,
+    ):
         super().__init__(message)
         self.transient = transient
         self.status_code = status_code
@@ -63,7 +69,8 @@ class AIClient:
             or ":generatecontent" in low
             or ":generate" in low
             or ":generatemessage" in low
-            or "/v1/models/" in low and ":generate" in low
+            or "/v1/models/" in low
+            and ":generate" in low
             or "/generativelanguage" in low
         ):
             return "GEMINI"
@@ -93,12 +100,16 @@ class BaseClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    async def chat(self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def chat(
+        self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         raise NotImplementedError()
 
 
 class OpenAICompatClient(BaseClient):
-    async def chat(self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def chat(
+        self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         body = {
             "model": self.model,
             "messages": messages,
@@ -111,17 +122,17 @@ class OpenAICompatClient(BaseClient):
             merged.update(extra)
         merged and body.update(merged)
 
-        base = (self.api_url or '').rstrip('/')
+        base = (self.api_url or "").rstrip("/")
         # Normalize common shapes:
         # - if provider gave a root like https://.../compatible-mode/v1 we should POST to .../v1/chat/completions
         # - if provider already includes /v1/chat/completions use it as-is
-        if base.endswith('/v1/chat/completions'):
+        if base.endswith("/v1/chat/completions"):
             full = base
-        elif base.endswith('/v1'):
-            full = base + '/chat/completions'
+        elif base.endswith("/v1"):
+            full = base + "/chat/completions"
         else:
             # default fallback: append full path
-            full = base + '/v1/chat/completions'
+            full = base + "/v1/chat/completions"
 
         timeout_seconds = _ai_request_timeout_seconds()
         retries = _ai_request_retries()
@@ -132,9 +143,15 @@ class OpenAICompatClient(BaseClient):
                     r = await client.post(full, headers=self._headers(), json=body)
                     # If provider returns 404 for constructed path, attempt a fallback to the raw base url
                     if r.status_code == 404:
-                        logger.warning('OpenAICompatClient got 404 for %s, retrying raw api_url %s', full, base)
+                        logger.warning(
+                            "OpenAICompatClient got 404 for %s, retrying raw api_url %s",
+                            full,
+                            base,
+                        )
                         try:
-                            fb = await client.post(base, headers=self._headers(), json=body)
+                            fb = await client.post(
+                                base, headers=self._headers(), json=body
+                            )
                             if fb.status_code >= 200 and fb.status_code < 300:
                                 data = fb.json()
                             else:
@@ -144,17 +161,27 @@ class OpenAICompatClient(BaseClient):
                                 try:
                                     txt1 = r.text
                                 except Exception:
-                                    txt1 = '<no body>'
+                                    txt1 = "<no body>"
                                 try:
                                     txt2 = fb.text
                                 except Exception:
-                                    txt2 = '<no body>'
-                                logger.error('OpenAICompatClient primary(%s) and fallback(%s) failed: %s / %s', full, base, txt1, txt2)
+                                    txt2 = "<no body>"
+                                logger.error(
+                                    "OpenAICompatClient primary(%s) and fallback(%s) failed: %s / %s",
+                                    full,
+                                    base,
+                                    txt1,
+                                    txt2,
+                                )
                                 fb.raise_for_status()
                         except Exception:
                             # bubble up original r content if fallback also fails
                             try:
-                                logger.error('OpenAICompatClient fallback post to %s failed: %s', base, fb.text if 'fb' in locals() else '<no body>')
+                                logger.error(
+                                    "OpenAICompatClient fallback post to %s failed: %s",
+                                    base,
+                                    fb.text if "fb" in locals() else "<no body>",
+                                )
                             except Exception:
                                 pass
                             r.raise_for_status()
@@ -167,8 +194,12 @@ class OpenAICompatClient(BaseClient):
                             try:
                                 txt = r.text
                             except Exception:
-                                txt = '<could not read response body>'
-                            logger.error('OpenAICompatClient async chat non-2xx response: %s %s', r.status_code, txt)
+                                txt = "<could not read response body>"
+                            logger.error(
+                                "OpenAICompatClient async chat non-2xx response: %s %s",
+                                r.status_code,
+                                txt,
+                            )
                             r.raise_for_status()
                         data = r.json()
                     text = None
@@ -178,9 +209,18 @@ class OpenAICompatClient(BaseClient):
                             delta = choices[0].get("message") or choices[0].get("delta")
                             if delta:
                                 if isinstance(delta, dict):
-                                    text = delta.get("content") or delta.get("content", None)
-                            text = text or choices[0].get("text") or choices[0].get("message", {}).get("content")
-                    return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
+                                    text = delta.get("content") or delta.get(
+                                        "content", None
+                                    )
+                            text = (
+                                text
+                                or choices[0].get("text")
+                                or choices[0].get("message", {}).get("content")
+                            )
+                    return {
+                        "text": text or json.dumps(data, ensure_ascii=False),
+                        "raw": data,
+                    }
                 except AIClientError:
                     raise
                 except _RETRYABLE_HTTPX_ERRORS as e:
@@ -215,19 +255,21 @@ class OpenAICompatClient(BaseClient):
                     try:
                         # 如果是 HTTPStatusError (4xx / 5xx), 拆出 status_code
                         # 5xx / 429 视为瞬时, 4xx 其余视为配置/权限问题
-                        if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
+                        if (
+                            isinstance(e, httpx.HTTPStatusError)
+                            and getattr(e, "response", None) is not None
+                        ):
                             resp = e.response
-                            req_url = getattr(resp, 'url', None) or full
+                            req_url = getattr(resp, "url", None) or full
                             body_text = None
                             try:
                                 body_text = resp.text
                             except Exception:
-                                body_text = '<could not read response body>'
-                            msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                                body_text = "<could not read response body>"
+                            msg = f"HTTP {resp.status_code} at {req_url}: {body_text}"
                             status_code_hint = resp.status_code
                             transient_flag = (
-                                resp.status_code == 429
-                                or 500 <= resp.status_code < 600
+                                resp.status_code == 429 or 500 <= resp.status_code < 600
                             )
                         elif isinstance(e, _RETRYABLE_HTTPX_ERRORS):
                             # 双保险: 走到这里说明 _RETRYABLE_HTTPX_ERRORS
@@ -243,27 +285,30 @@ class OpenAICompatClient(BaseClient):
 
 
 class GeminiClient(BaseClient):
-    async def chat(self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        base = (self.api_url or '').rstrip('/')
+    async def chat(
+        self, messages: List[Dict[str, str]], extra: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        base = (self.api_url or "").rstrip("/")
         # Normalize model: if user supplied a short id like 'text-bison', make it 'models/text-bison'
-        model_segment = self.model or ''
+        model_segment = self.model or ""
         try:
-            if model_segment and 'models/' not in model_segment:
-                model_segment = 'models/' + model_segment
+            if model_segment and "models/" not in model_segment:
+                model_segment = "models/" + model_segment
         except Exception:
             pass
 
         # If base already contains a generateMessage-like path or model path, use it as-is.
         # Don't let the URL scheme (https:) trigger the ':' check — instead check for known path markers.
         # If the provider is Google's generativelanguage host, prefer the generateContent endpoint and payload
-        is_google_gl = 'generativelanguage.googleapis.com' in base
+        is_google_gl = "generativelanguage.googleapis.com" in base
         if is_google_gl and model_segment:
             # avoid double 'models/' when building path
             seg = model_segment
-            if seg.startswith('models/'): seg = seg[len('models/'):]
+            if seg.startswith("models/"):
+                seg = seg[len("models/") :]
             # Use generateContent for Google GL (some SDKs/docs use generateContent)
             full = f"{base}/v1/models/{seg}:generateContent"
-        elif model_segment and (':generate' not in base and '/v1/models/' not in base):
+        elif model_segment and (":generate" not in base and "/v1/models/" not in base):
             full = f"{base}/v1/{model_segment}:generateMessage"
         else:
             full = base
@@ -277,14 +322,7 @@ class GeminiClient(BaseClient):
                 for m in messages:
                     # include all message texts as separate parts
                     parts.append({"text": m.get("content")})
-                body = {
-                    "contents": [
-                        {
-                            "role": "user",
-                            "parts": parts
-                        }
-                    ]
-                }
+                body = {"contents": [{"role": "user", "parts": parts}]}
             except Exception:
                 parts = []
                 for m in messages:
@@ -294,10 +332,24 @@ class GeminiClient(BaseClient):
             # Google Generative Language expects messages like: {"author": "user", "content": {"text": "..."}}
             try:
                 body = {
-                    "messages": [{"author": m.get("role", "user"), "content": {"text": m.get("content")}} for m in messages]
+                    "messages": [
+                        {
+                            "author": m.get("role", "user"),
+                            "content": {"text": m.get("content")},
+                        }
+                        for m in messages
+                    ]
                 }
             except Exception:
-                body = {"messages": [{"author": (m.get("role", "user")), "content": {"text": str(m.get("content"))}} for m in messages]}
+                body = {
+                    "messages": [
+                        {
+                            "author": (m.get("role", "user")),
+                            "content": {"text": str(m.get("content"))},
+                        }
+                        for m in messages
+                    ]
+                }
         merged = {}
         if isinstance(self.extra, dict):
             merged.update(self.extra)
@@ -316,11 +368,14 @@ class GeminiClient(BaseClient):
                     # looks like an API key (heuristic: does not start with 'ya29.'), send it as query param `key=`.
                     params = None
                     try:
-                        low_base = (base or '').lower()
-                        if 'generativelanguage.googleapis.com' in low_base and self.api_key:
+                        low_base = (base or "").lower()
+                        if (
+                            "generativelanguage.googleapis.com" in low_base
+                            and self.api_key
+                        ):
                             # heuristic for API key vs OAuth token
-                            if not str(self.api_key).startswith('ya29.'):
-                                params = {'key': self.api_key}
+                            if not str(self.api_key).startswith("ya29."):
+                                params = {"key": self.api_key}
                     except Exception:
                         params = None
 
@@ -328,21 +383,39 @@ class GeminiClient(BaseClient):
                     headers_local = self._headers()
                     if is_google_gl and params:
                         # API key in query param should be used instead of Authorization header
-                        headers_local.pop('Authorization', None)
+                        headers_local.pop("Authorization", None)
 
                     # Log the final target and request body for debugging
                     try:
-                        final_url_debug = full + (('?'+ '&'.join([f"{k}={v}" for k,v in params.items()])) if params else '')
+                        final_url_debug = full + (
+                            ("?" + "&".join([f"{k}={v}" for k, v in params.items()]))
+                            if params
+                            else ""
+                        )
                     except Exception:
                         final_url_debug = full
-                    logger.debug('GeminiClient POST %s body=%s headers=%s', final_url_debug, json.dumps(body, ensure_ascii=False), {k: ('<redacted>' if k.lower()=='authorization' else v) for k,v in headers_local.items()})
+                    logger.debug(
+                        "GeminiClient POST %s body=%s headers=%s",
+                        final_url_debug,
+                        json.dumps(body, ensure_ascii=False),
+                        {
+                            k: ("<redacted>" if k.lower() == "authorization" else v)
+                            for k, v in headers_local.items()
+                        },
+                    )
 
-                    r = await client.post(full, headers=headers_local, json=body, params=params)
+                    r = await client.post(
+                        full, headers=headers_local, json=body, params=params
+                    )
                     if r.status_code == 404:
                         # Try OpenAI-compatible chat completions path as a fallback (some providers support compat layer)
                         try:
-                            logger.warning('GeminiClient primary generateMessage returned 404, trying /v1/chat/completions fallback')
-                            openai_compat_url = base.rstrip('/') + '/v1/chat/completions'
+                            logger.warning(
+                                "GeminiClient primary generateMessage returned 404, trying /v1/chat/completions fallback"
+                            )
+                            openai_compat_url = (
+                                base.rstrip("/") + "/v1/chat/completions"
+                            )
                             # construct OpenAI-style body
                             oa_body = {"model": self.model, "messages": messages}
                             oa_merged = {}
@@ -352,26 +425,52 @@ class GeminiClient(BaseClient):
                                 oa_merged.update(extra)
                             oa_merged and oa_body.update(oa_merged)
                             # For fallback, reuse header policy (remove Authorization if using API key)
-                            fb = await client.post(openai_compat_url, headers=headers_local, json=oa_body, params=params)
+                            fb = await client.post(
+                                openai_compat_url,
+                                headers=headers_local,
+                                json=oa_body,
+                                params=params,
+                            )
                             if fb.status_code >= 200 and fb.status_code < 300:
                                 data = fb.json()
                                 # parse as OpenAI response
                                 text = None
                                 if isinstance(data, dict):
-                                    choices = data.get('choices') or []
+                                    choices = data.get("choices") or []
                                     if choices:
-                                        delta = choices[0].get('message') or choices[0].get('delta')
+                                        delta = choices[0].get("message") or choices[
+                                            0
+                                        ].get("delta")
                                         if delta and isinstance(delta, dict):
-                                            text = delta.get('content') or delta.get('content', None)
-                                        text = text or choices[0].get('text') or choices[0].get('message', {}).get('content')
-                                return {"text": text or json.dumps(data, ensure_ascii=False), "raw": data}
+                                            text = delta.get("content") or delta.get(
+                                                "content", None
+                                            )
+                                        text = (
+                                            text
+                                            or choices[0].get("text")
+                                            or choices[0]
+                                            .get("message", {})
+                                            .get("content")
+                                        )
+                                return {
+                                    "text": text
+                                    or json.dumps(data, ensure_ascii=False),
+                                    "raw": data,
+                                }
                             else:
-                                logger.error('GeminiClient fallback also failed: %s %s', fb.status_code, fb.text if hasattr(fb, 'text') else str(fb))
+                                logger.error(
+                                    "GeminiClient fallback also failed: %s %s",
+                                    fb.status_code,
+                                    fb.text if hasattr(fb, "text") else str(fb),
+                                )
                                 fb.raise_for_status()
                         except Exception:
                             # re-raise original 404 if fallback fails
                             try:
-                                logger.error('GeminiClient fallback post failed: %s', r.text if hasattr(r, 'text') else str(r))
+                                logger.error(
+                                    "GeminiClient fallback post failed: %s",
+                                    r.text if hasattr(r, "text") else str(r),
+                                )
                             except Exception:
                                 pass
                             r.raise_for_status()
@@ -388,12 +487,18 @@ class GeminiClient(BaseClient):
                                 parts = first.get("parts") or []
                                 if parts and isinstance(parts, list):
                                     try:
-                                        text = ''.join([p.get('text', '') for p in parts if isinstance(p, dict)])
+                                        text = "".join(
+                                            [
+                                                p.get("text", "")
+                                                for p in parts
+                                                if isinstance(p, dict)
+                                            ]
+                                        )
                                     except Exception:
                                         text = None
                                 # fallback: some vendors put text directly
                                 if not text:
-                                    text = first.get("text") or first.get('text', None)
+                                    text = first.get("text") or first.get("text", None)
                         if not text:
                             text = json.dumps(data, ensure_ascii=False)
                     return {"text": text or "", "raw": data}
@@ -426,18 +531,20 @@ class GeminiClient(BaseClient):
                     transient_flag = False
                     status_code_hint: Optional[int] = None
                     try:
-                        if isinstance(e, httpx.HTTPStatusError) and getattr(e, 'response', None) is not None:
+                        if (
+                            isinstance(e, httpx.HTTPStatusError)
+                            and getattr(e, "response", None) is not None
+                        ):
                             resp = e.response
-                            req_url = getattr(resp, 'url', None) or full
+                            req_url = getattr(resp, "url", None) or full
                             try:
                                 body_text = resp.text
                             except Exception:
-                                body_text = '<could not read response body>'
-                            msg = f'HTTP {resp.status_code} at {req_url}: {body_text}'
+                                body_text = "<could not read response body>"
+                            msg = f"HTTP {resp.status_code} at {req_url}: {body_text}"
                             status_code_hint = resp.status_code
                             transient_flag = (
-                                resp.status_code == 429
-                                or 500 <= resp.status_code < 600
+                                resp.status_code == 429 or 500 <= resp.status_code < 600
                             )
                         elif isinstance(e, _RETRYABLE_HTTPX_ERRORS):
                             transient_flag = True

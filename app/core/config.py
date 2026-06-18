@@ -10,7 +10,9 @@ class Settings:
     APP_VERSION = "1.0.0"
 
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
-    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5432/yomu_pg")
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL", "postgresql://postgres:1234@localhost:5432/yomu_pg"
+    )
     RSSHUB_BASE_URL = os.getenv("RSSHUB_BASE_URL", "https://rsshub.rssforever.com")
     # 默认不预置固定来源，用户可在新闻中心直接输入 RSSHub 路由或订阅链接。
     NEWS_CENTER_SOURCE_URL = os.getenv("NEWS_CENTER_SOURCE_URL", "")
@@ -22,7 +24,9 @@ class Settings:
     # AI 请求层超时与重试配置
     AI_REQUEST_TIMEOUT_SECONDS = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "60"))
     AI_REQUEST_RETRIES = int(os.getenv("AI_REQUEST_RETRIES", "2"))
-    AI_REQUEST_RETRY_DELAY_SECONDS = float(os.getenv("AI_REQUEST_RETRY_DELAY_SECONDS", "1"))
+    AI_REQUEST_RETRY_DELAY_SECONDS = float(
+        os.getenv("AI_REQUEST_RETRY_DELAY_SECONDS", "1")
+    )
 
     # TTS (MeloTTS) 配置
     # device: auto | cpu | cuda | mps。auto 时 MeloTTS 自己探测
@@ -32,7 +36,9 @@ class Settings:
     # 磁盘缓存根目录；WAV 文件按 sha1(text+speed+language) 命名存放
     TTS_CACHE_DIR = os.getenv("TTS_CACHE_DIR", "/app/static/audio_cache")
     # 启动时是否预热模型（False 则懒加载；首次 /api/tts 请求会慢 30-60s）
-    TTS_PRELOAD_ON_STARTUP = os.getenv("TTS_PRELOAD_ON_STARTUP", "false").lower() == "true"
+    TTS_PRELOAD_ON_STARTUP = (
+        os.getenv("TTS_PRELOAD_ON_STARTUP", "false").lower() == "true"
+    )
 
 
 settings = Settings()

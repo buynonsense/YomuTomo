@@ -6,7 +6,9 @@ from app.model.models import Notification
 from app.utils.time import datetime_to_isoformat, utc_now
 
 
-def _notification_payload(notification: Notification) -> dict[str, str | int | bool | None]:
+def _notification_payload(
+    notification: Notification,
+) -> dict[str, str | int | bool | None]:
     return {
         "id": notification.id,
         "user_id": notification.user_id,
@@ -61,7 +63,9 @@ def create_notification(
     return notification
 
 
-def list_notifications(db: Session, user_id: int) -> tuple[list[dict[str, str | int | bool | None]], int]:
+def list_notifications(
+    db: Session, user_id: int
+) -> tuple[list[dict[str, str | int | bool | None]], int]:
     notifications = (
         db.query(Notification)
         .filter(Notification.user_id == user_id)
@@ -69,7 +73,9 @@ def list_notifications(db: Session, user_id: int) -> tuple[list[dict[str, str | 
         .all()
     )
     unread_count = sum(1 for notification in notifications if not notification.is_read)
-    return [_notification_payload(notification) for notification in notifications], unread_count
+    return [
+        _notification_payload(notification) for notification in notifications
+    ], unread_count
 
 
 def get_unread_count(db: Session, user_id: int) -> int:
@@ -80,7 +86,9 @@ def get_unread_count(db: Session, user_id: int) -> int:
     )
 
 
-def mark_notifications_read(db: Session, user_id: int, notification_id: int | None = None) -> int:
+def mark_notifications_read(
+    db: Session, user_id: int, notification_id: int | None = None
+) -> int:
     query = db.query(Notification).filter(Notification.user_id == user_id)
     if notification_id is not None:
         query = query.filter(Notification.id == notification_id)
@@ -103,7 +111,9 @@ def mark_notifications_read(db: Session, user_id: int, notification_id: int | No
     return affected
 
 
-def delete_notifications(db: Session, user_id: int, notification_id: int | None = None) -> int:
+def delete_notifications(
+    db: Session, user_id: int, notification_id: int | None = None
+) -> int:
     query = db.query(Notification).filter(Notification.user_id == user_id)
     if notification_id is not None:
         query = query.filter(Notification.id == notification_id)

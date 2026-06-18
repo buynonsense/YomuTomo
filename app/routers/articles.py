@@ -1,25 +1,29 @@
 import json
-from urllib.parse import quote, urlparse
 from typing import Optional
-from fastapi import APIRouter, Request, Form, Depends, Query
+from urllib.parse import quote, urlparse
+
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.db import get_db
-from app.model.models import User, Article
+from app.model.models import Article, User
 from app.routers.context import get_current_user
-from app.services.ai_client_async import AIClient, AIClientError
 from app.services import services as service_module
+from app.services.ai_client_async import AIClient, AIClientError
 from app.services.notifications import create_notification
-from app.services.vocabulary import seed_vocabulary_entries, attach_vocab_state, build_vocabulary_view_rows, toggle_vocabulary_status
-from app.services.rsshub_feed import RSSHubFetchError, fetch_rsshub_feed_items, normalize_rsshub_source_url
-from app.services.recent_sources import (
-    MAX_RECENT_PER_USER,
-    list_recent_sources,
-    record_usage,
-    remove_source,
-)
+from app.services.recent_sources import (MAX_RECENT_PER_USER,
+                                         list_recent_sources, record_usage,
+                                         remove_source)
+from app.services.rsshub_feed import (RSSHubFetchError,
+                                      fetch_rsshub_feed_items,
+                                      normalize_rsshub_source_url)
+from app.services.vocabulary import (attach_vocab_state,
+                                     build_vocabulary_view_rows,
+                                     seed_vocabulary_entries,
+                                     toggle_vocabulary_status)
 from app.utils.templates import create_templates
 from app.utils.time import datetime_to_isoformat, utc_now
 
@@ -43,7 +47,9 @@ def require_login(request: Request, db: Session) -> Optional[User]:
     return user
 
 
-def _build_internal_source_url(request: Request, fallback_path: str, query_params: dict[str, str] | None = None) -> str:
+def _build_internal_source_url(
+    request: Request, fallback_path: str, query_params: dict[str, str] | None = None
+) -> str:
     path = fallback_path
     referer = request.headers.get("referer")
     if isinstance(referer, str) and referer:
@@ -57,7 +63,10 @@ def _build_internal_source_url(request: Request, fallback_path: str, query_param
             path = fallback_path
 
     if query_params:
-        encoded = "&".join(f"{quote(str(key))}={quote(str(value))}" for key, value in query_params.items())
+        encoded = "&".join(
+            f"{quote(str(key))}={quote(str(value))}"
+            for key, value in query_params.items()
+        )
         path = f"{path}{'&' if '?' in path else '?'}{encoded}"
 
     return path
@@ -68,13 +77,16 @@ async def dashboard(
     request: Request,
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1, description="页码，从1开始"),
-    size: int = Query(24, ge=1, le=100, description="每页条目数")
+    size: int = Query(24, ge=1, le=100, description="每页条目数"),
 ):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     # 统计总数
-    total_items = db.query(func.count(Article.id)).filter(Article.user_id == user.id).scalar() or 0
+    total_items = (
+        db.query(func.count(Article.id)).filter(Article.user_id == user.id).scalar()
+        or 0
+    )
     # 计算分页边界
     total_pages = max((total_items + size - 1) // size, 1)
     if page > total_pages:
@@ -88,10 +100,10 @@ async def dashboard(
         .limit(size)
         .all()
     )
-    
+
     for article in articles:
         article.updated_at_iso = datetime_to_isoformat(article.updated_at)
-    
+
     templates = create_templates("templates")
     return templates.TemplateResponse(
         request,
@@ -155,7 +167,9 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
     raw_source_url = None
     limit = 12
     if isinstance(payload, dict):
-        raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+        raw_source_url = (
+            payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+        )
         raw_limit = payload.get("limit")
         if raw_limit is not None:
             try:
@@ -179,7 +193,9 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
         except Exception as e:
             # 记录失败不影响主流程
             db.rollback()
-            log_with_time(f"⚠️ 记录最近订阅源失败 user_id={user.id}: {e}", level="WARNING")
+            log_with_time(
+                f"⚠️ 记录最近订阅源失败 user_id={user.id}: {e}", level="WARNING"
+            )
         return {
             "success": True,
             "message": "已获取预览结果" if items else "未抓到可用条目",
@@ -193,10 +209,17 @@ async def preview_rsshub_feed(request: Request, db: Session = Depends(get_db)):
         return {"success": False, "message": str(e), "items": [], "count": 0}
     except Exception as e:
         log_with_time(f"❌ 预览 RSS 订阅源失败 source_url={raw_source_url}: {e}")
-        return {"success": False, "message": f"预览失败：{str(e)}", "items": [], "count": 0}
+        return {
+            "success": False,
+            "message": f"预览失败：{str(e)}",
+            "items": [],
+            "count": 0,
+        }
 
 
-@router.get("/api/recent_feed_sources", summary="获取当前用户的最近订阅源列表 (最多 5 条)")
+@router.get(
+    "/api/recent_feed_sources", summary="获取当前用户的最近订阅源列表 (最多 5 条)"
+)
 async def api_recent_feed_sources_list(
     request: Request,
     db: Session = Depends(get_db),
@@ -222,7 +245,9 @@ async def api_recent_feed_sources_list(
 
 
 @router.post("/api/recent_feed_sources/record", summary="记录一次订阅源使用")
-async def api_recent_feed_sources_record(request: Request, db: Session = Depends(get_db)):
+async def api_recent_feed_sources_record(
+    request: Request, db: Session = Depends(get_db)
+):
     """用户主动点 chip / 重发预览时调用, 把订阅源记入"最近 5 条"。
 
     正常情况下预览成功会自动记录 (preview_rsshub_feed), 这里给前端一个
@@ -239,7 +264,9 @@ async def api_recent_feed_sources_record(request: Request, db: Session = Depends
 
     raw_source_url = None
     if isinstance(payload, dict):
-        raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+        raw_source_url = (
+            payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+        )
     if not isinstance(raw_source_url, str) or not raw_source_url.strip():
         return {"success": False, "message": "请提供有效的订阅源 URL"}
 
@@ -268,7 +295,9 @@ async def api_recent_feed_sources_record(request: Request, db: Session = Depends
 
 
 @router.delete("/api/recent_feed_sources", summary="删除一条最近订阅源")
-async def api_recent_feed_sources_delete(request: Request, db: Session = Depends(get_db)):
+async def api_recent_feed_sources_delete(
+    request: Request, db: Session = Depends(get_db)
+):
     """用户主动从 chip 列表里移除某条订阅源。
 
     支持 query (DELETE ?source_url=...) 和 JSON body 两种方式。
@@ -284,7 +313,11 @@ async def api_recent_feed_sources_delete(request: Request, db: Session = Depends
         except Exception:
             payload = None
         if isinstance(payload, dict):
-            raw_source_url = payload.get("source_url") or payload.get("feed_url") or payload.get("url")
+            raw_source_url = (
+                payload.get("source_url")
+                or payload.get("feed_url")
+                or payload.get("url")
+            )
 
     if not isinstance(raw_source_url, str) or not raw_source_url.strip():
         return {"success": False, "message": "请提供有效的订阅源 URL"}
@@ -342,21 +375,27 @@ async def process_text_async(
     api_key: str = Form(None, description="OpenAI API Key"),
     base_url: str = Form(None, description="OpenAI Base URL"),
     model: str = Form(None, description="OpenAI Model"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    
+
     # Determine API key and base URL: prefer explicit form fields, then headers, then user's stored config
-    req_api_key = api_key or request.headers.get('x-api-key') or user.openai_api_key
-    req_base_url = base_url or request.headers.get('x-base-url') or user.openai_base_url
-    final_model = model or request.headers.get('x-model') or user.openai_model
+    req_api_key = api_key or request.headers.get("x-api-key") or user.openai_api_key
+    req_base_url = base_url or request.headers.get("x-base-url") or user.openai_base_url
+    final_model = model or request.headers.get("x-model") or user.openai_model
 
     # Debug: mask API key to help trace missing-config issues
     try:
-        masked = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
-        log_with_time(f"[DEBUG] resolved req_api_key={masked}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+        masked = (
+            (req_api_key[:6] + "***" + req_api_key[-4:])
+            if req_api_key and len(req_api_key) > 10
+            else ("None" if not req_api_key else "***")
+        )
+        log_with_time(
+            f"[DEBUG] resolved req_api_key={masked}; req_base_url={req_base_url or 'None'}; final_model={final_model}"
+        )
     except Exception:
         pass
 
@@ -369,8 +408,14 @@ async def process_text_async(
                 req_base_url = fresh.openai_base_url or req_base_url
                 final_model = final_model or fresh.openai_model
                 try:
-                    masked2 = (req_api_key[:6] + '***' + req_api_key[-4:]) if req_api_key and len(req_api_key) > 10 else ('None' if not req_api_key else '***')
-                    log_with_time(f"[DEBUG-fallback] reloaded user.id={user.id} req_api_key={masked2}; req_base_url={req_base_url or 'None'}; final_model={final_model}")
+                    masked2 = (
+                        (req_api_key[:6] + "***" + req_api_key[-4:])
+                        if req_api_key and len(req_api_key) > 10
+                        else ("None" if not req_api_key else "***")
+                    )
+                    log_with_time(
+                        f"[DEBUG-fallback] reloaded user.id={user.id} req_api_key={masked2}; req_base_url={req_base_url or 'None'}; final_model={final_model}"
+                    )
                 except Exception:
                     pass
         except Exception:
@@ -384,7 +429,9 @@ async def process_text_async(
 
     try:
         # 使用多线程并发生成所有内容
-        ruby_text, vocab, translation, title, emoji = generate_all_content(text, final_model, client)
+        ruby_text, vocab, translation, title, emoji = generate_all_content(
+            text, final_model, client
+        )
     except Exception as e:
         # 返回错误信息。generate_all_content 已经把 AIClientError 转成可读的中文提示
         # (例如 "AI 接口超时, 已自动重试仍失败" / "AI 接口鉴权失败 (HTTP 401), 请检查 API Key")
@@ -401,7 +448,10 @@ async def process_text_async(
                 source_url="/",
             )
         except Exception as notify_error:
-            log_with_time(f"❌ 写入文章生成失败通知失败 user_id={user.id}: {notify_error}", level="ERROR")
+            log_with_time(
+                f"❌ 写入文章生成失败通知失败 user_id={user.id}: {notify_error}",
+                level="ERROR",
+            )
         return {"error": err_msg}
 
     user = get_current_user(request, db)
@@ -426,7 +476,10 @@ async def process_text_async(
             db.commit()
         except Exception as e:
             db.rollback()
-            log_with_time(f"[VOCAB] seed entries failed article_id={article.id}: {e}", level="ERROR")
+            log_with_time(
+                f"[VOCAB] seed entries failed article_id={article.id}: {e}",
+                level="ERROR",
+            )
 
         try:
             create_notification(
@@ -439,7 +492,10 @@ async def process_text_async(
                 source_url=f"/articles/{article.id}",
             )
         except Exception as notify_error:
-            log_with_time(f"❌ 写入文章生成成功通知失败 article_id={article.id}: {notify_error}", level="ERROR")
+            log_with_time(
+                f"❌ 写入文章生成成功通知失败 article_id={article.id}: {notify_error}",
+                level="ERROR",
+            )
 
         return {"redirect_url": f"/articles/{article.id}"}
 
@@ -448,16 +504,24 @@ async def process_text_async(
         "ruby_text": ruby_text,
         "vocab": vocab,
         "translation": translation,
-        "title": title
+        "title": title,
     }
 
 
-@router.get("/articles/{article_id}", response_class=HTMLResponse, summary="查看文章详情")
-async def view_article(article_id: int, request: Request, db: Session = Depends(get_db)):
+@router.get(
+    "/articles/{article_id}", response_class=HTMLResponse, summary="查看文章详情"
+)
+async def view_article(
+    article_id: int, request: Request, db: Session = Depends(get_db)
+):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.user_id == user.id)
+        .first()
+    )
     if not article:
         return RedirectResponse(url="/dashboard", status_code=303)
     article.updated_at = utc_now()
@@ -486,14 +550,18 @@ async def view_article(article_id: int, request: Request, db: Session = Depends(
 
 
 @router.get("/vocabulary", response_class=HTMLResponse, summary="我的生词本")
-async def vocabulary_book(request: Request, status: str = Query(None, description="筛选状态"), db: Session = Depends(get_db)):
+async def vocabulary_book(
+    request: Request,
+    status: str = Query(None, description="筛选状态"),
+    db: Session = Depends(get_db),
+):
     user = require_login(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
 
     vocab_rows = build_vocabulary_view_rows(db, user.id, status=status)
-    mastered_count = sum(1 for row in vocab_rows if row['status'] == 'mastered')
-    learning_count = sum(1 for row in vocab_rows if row['status'] == 'learning')
+    mastered_count = sum(1 for row in vocab_rows if row["status"] == "mastered")
+    learning_count = sum(1 for row in vocab_rows if row["status"] == "learning")
 
     templates = create_templates("templates")
     return templates.TemplateResponse(
@@ -515,7 +583,9 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         if getattr(request.state, "htmx", False):
-            return HTMLResponse('<form class="vocab-toggle-form" disabled></form>', status_code=401)
+            return HTMLResponse(
+                '<form class="vocab-toggle-form" disabled></form>', status_code=401
+            )
         return {"success": False, "error": "未登录"}
 
     is_htmx = getattr(request.state, "htmx", False)
@@ -532,7 +602,11 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
         meaning = form.get("meaning") or None
         article_id_raw = form.get("article_id")
         try:
-            article_id = int(article_id_raw) if article_id_raw not in (None, "", "None") else None
+            article_id = (
+                int(article_id_raw)
+                if article_id_raw not in (None, "", "None")
+                else None
+            )
         except (TypeError, ValueError):
             article_id = None
         # current_mastered=1 表示已掌握 → 这次点击要"取消掌握"
@@ -594,7 +668,7 @@ async def toggle_vocabulary(request: Request, db: Session = Depends(get_db)):
         "success": True,
         "word": entry.word,
         "status": entry.status,
-        "mastered": entry.status == 'mastered',
+        "mastered": entry.status == "mastered",
     }
 
 
@@ -632,13 +706,19 @@ def _vocab_toggle_form_response(
 
 
 @router.post("/articles/{article_id}/delete", summary="删除文章")
-async def delete_article(article_id: int, request: Request, db: Session = Depends(get_db)):
+async def delete_article(
+    article_id: int, request: Request, db: Session = Depends(get_db)
+):
     user = require_login(request, db)
     if not user:
         if getattr(request.state, "htmx", False):
             return HTMLResponse(status_code=401)
         return RedirectResponse(url="/login", status_code=303)
-    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.user_id == user.id)
+        .first()
+    )
     if article:
         db.delete(article)
         db.commit()
@@ -654,7 +734,12 @@ async def delete_article(article_id: int, request: Request, db: Session = Depend
 
 
 @router.post("/articles/{article_id}/rename", summary="修改文章标题")
-async def rename_article(article_id: int, request: Request, title: str = Form(...), db: Session = Depends(get_db)):
+async def rename_article(
+    article_id: int,
+    request: Request,
+    title: str = Form(...),
+    db: Session = Depends(get_db),
+):
     user = require_login(request, db)
     if not user:
         if getattr(request.state, "htmx", False):
@@ -662,11 +747,17 @@ async def rename_article(article_id: int, request: Request, title: str = Form(..
         return RedirectResponse(url="/login", status_code=303)
 
     new_title = (title or "").strip()
-    article = db.query(Article).filter(Article.id == article_id, Article.user_id == user.id).first()
+    article = (
+        db.query(Article)
+        .filter(Article.id == article_id, Article.user_id == user.id)
+        .first()
+    )
     if article and new_title:
         article.title = new_title
         db.commit()
-    final_title = new_title if (article and new_title) else (article.title if article else "")
+    final_title = (
+        new_title if (article and new_title) else (article.title if article else "")
+    )
 
     if getattr(request.state, "htmx", False):
         # Stage 3c: htmx 提交时返回空 body + article-renamed 事件，前端更新卡片标题
@@ -691,11 +782,16 @@ async def test_ai_config(
         return {"success": False, "error": "API Key 未提供"}
 
     # Use unified async AI client factory so Gemini (Google) endpoints are handled correctly
-    provider = {"api_url": base_url or '', "api_key": api_key, "model": final_model, "extra": {}}
+    provider = {
+        "api_url": base_url or "",
+        "api_key": api_key,
+        "model": final_model,
+        "extra": {},
+    }
     client = AIClient.factory(provider)
     try:
         resp = await client.chat([{"role": "user", "content": "Hello"}])
-        return {"success": True, "model": final_model, "text": resp.get('text')}
+        return {"success": True, "model": final_model, "text": resp.get("text")}
     except AIClientError as e:
         return {"success": False, "error": str(e)}
     except Exception as e:
@@ -722,7 +818,10 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
             if raw_source_url:
                 normalized_source_url = normalize_rsshub_source_url(raw_source_url)
                 if not normalized_source_url:
-                    return {"success": False, "message": "请提供有效的 RSSHub 路由或订阅源 URL"}
+                    return {
+                        "success": False,
+                        "message": "请提供有效的 RSSHub 路由或订阅源 URL",
+                    }
                 source_url = normalized_source_url
 
         raw_selected = payload.get("news_urls")
@@ -743,7 +842,7 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
     if selected_urls:
         # 保持只抓取有效 URL，避免无效链接污染后台任务
         selected_urls = list(dict.fromkeys(selected_urls))
-    
+
     try:
         # Reload user from DB to get latest config (handles stale session/user object)
         try:
@@ -752,23 +851,31 @@ async def crawl_news(request: Request, db: Session = Depends(get_db)):
                 user = fresh
         except Exception:
             pass
-        
+
         # 检查用户是否已配置AI设置
         if not user.openai_api_key:
             return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
-        
+
         # 验证AI配置是否有效
         try:
             # Use async AI client directly to avoid asyncio.run() in running event loop
-            provider = {"api_url": user.openai_base_url or '', "api_key": user.openai_api_key, "model": user.openai_model, "extra": {}}
+            provider = {
+                "api_url": user.openai_base_url or "",
+                "api_key": user.openai_api_key,
+                "model": user.openai_model,
+                "extra": {},
+            }
             client = AIClient.factory(provider)
             resp = await client.chat([{"role": "user", "content": "Hello"}])
             log_with_time(f"[AI] 配置验证成功: {user.openai_model}")
         except Exception as e:
             return {"success": False, "message": f"AI配置验证失败: {str(e)}"}
-        
+
         from spider.rsshub_spider import crawl_and_save_articles
-        result = crawl_and_save_articles(user.id, selected_urls=selected_urls or None, source_url=source_url)
+
+        result = crawl_and_save_articles(
+            user.id, selected_urls=selected_urls or None, source_url=source_url
+        )
         return result
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -788,11 +895,19 @@ async def crawl_custom_url_endpoint(request: Request, db: Session = Depends(get_
         payload = None
 
     if isinstance(payload, dict):
-        raw_url = payload.get("source_url") or payload.get("url") or payload.get("page_url") or payload.get("feed_url")
+        raw_url = (
+            payload.get("source_url")
+            or payload.get("url")
+            or payload.get("page_url")
+            or payload.get("feed_url")
+        )
         if isinstance(raw_url, str):
             normalized_source_url = normalize_rsshub_source_url(raw_url)
             if not normalized_source_url:
-                return {"success": False, "message": "请提供有效的 RSSHub 路由或订阅源 URL"}
+                return {
+                    "success": False,
+                    "message": "请提供有效的 RSSHub 路由或订阅源 URL",
+                }
             source_url = normalized_source_url
 
         raw_selected = payload.get("selected_urls")
@@ -824,13 +939,20 @@ async def crawl_custom_url_endpoint(request: Request, db: Session = Depends(get_
         if not user.openai_api_key:
             return {"success": False, "message": "请先在设置中配置AI参数（API Key等）"}
 
-        provider = {"api_url": user.openai_base_url or '', "api_key": user.openai_api_key, "model": user.openai_model, "extra": {}}
+        provider = {
+            "api_url": user.openai_base_url or "",
+            "api_key": user.openai_api_key,
+            "model": user.openai_model,
+            "extra": {},
+        }
         client = AIClient.factory(provider)
         await client.chat([{"role": "user", "content": "Hello"}])
 
         from spider.rsshub_spider import crawl_custom_url
 
-        return crawl_custom_url(user.id, source_url, selected_urls=selected_urls or None)
+        return crawl_custom_url(
+            user.id, source_url, selected_urls=selected_urls or None
+        )
     except Exception as e:
         return {"success": False, "message": str(e)}
 
@@ -840,14 +962,14 @@ async def get_ai_config(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return {"error": "未登录"}
-    
+
     return {
         "configured": bool(user.openai_api_key),
         "api_key": user.openai_api_key or "",
         "base_url": user.openai_base_url or "",
         "model": user.openai_model,
         "has_api_key": bool(user.openai_api_key),
-        "has_base_url": bool(user.openai_base_url)
+        "has_base_url": bool(user.openai_base_url),
     }
 
 
@@ -857,12 +979,14 @@ async def save_ai_config(
     openai_api_key: str = Form(...),
     openai_base_url: str = Form(None),
     openai_model: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     user = require_login(request, db)
     if not user:
         if getattr(request.state, "htmx", False):
-            return _ai_config_feedback_response(request, success=False, message="请先登录")
+            return _ai_config_feedback_response(
+                request, success=False, message="请先登录"
+            )
         return RedirectResponse(url="/login", status_code=303)
 
     success = False
@@ -870,7 +994,12 @@ async def save_ai_config(
     try:
         # Use the unified async AI client to validate provider (handles Gemini/Google GL correctly)
         test_model = openai_model
-        provider = {"api_url": openai_base_url or '', "api_key": openai_api_key, "model": test_model, "extra": {}}
+        provider = {
+            "api_url": openai_base_url or "",
+            "api_key": openai_api_key,
+            "model": test_model,
+            "extra": {},
+        }
         client = AIClient.factory(provider)
         try:
             await client.chat([{"role": "user", "content": "Hello"}])
@@ -886,7 +1015,9 @@ async def save_ai_config(
         db.commit()
 
         try:
-            source_url = _build_internal_source_url(request, "/", {"open_settings": "ai"})
+            source_url = _build_internal_source_url(
+                request, "/", {"open_settings": "ai"}
+            )
             create_notification(
                 db,
                 user_id=user.id,
@@ -897,7 +1028,10 @@ async def save_ai_config(
                 source_url=source_url,
             )
         except Exception as notify_error:
-            log_with_time(f"❌ 写入 AI 配置保存通知失败 user_id={user.id}: {notify_error}", level="ERROR")
+            log_with_time(
+                f"❌ 写入 AI 配置保存通知失败 user_id={user.id}: {notify_error}",
+                level="ERROR",
+            )
 
         success = True
         message = "AI配置保存成功"
@@ -924,9 +1058,7 @@ def _ai_config_feedback_response(request: Request, *, success: bool, message: st
         {"success": success, "message": message},
     )
     event = "ai-config-saved" if success else "ai-config-failed"
-    response.headers["HX-Trigger"] = json.dumps(
-        {event: {"message": message}}
-    )
+    response.headers["HX-Trigger"] = json.dumps({event: {"message": message}})
     return response
 
 
@@ -937,10 +1069,14 @@ async def get_crawl_status(request: Request, db: Session = Depends(get_db)):
         return {"error": "未登录"}
 
     from app.model.models import CrawlTask
+
     # 获取用户最新的爬虫任务
-    task = db.query(CrawlTask).filter(
-        CrawlTask.user_id == user.id
-    ).order_by(CrawlTask.created_at.desc()).first()
+    task = (
+        db.query(CrawlTask)
+        .filter(CrawlTask.user_id == user.id)
+        .order_by(CrawlTask.created_at.desc())
+        .first()
+    )
 
     if not task:
         return {"status": "no_task"}
@@ -1024,7 +1160,11 @@ async def get_crawl_queue(
     }
 
 
-@router.get("/crawl_queue/partial", response_class=HTMLResponse, summary="爬取队列 htmx 片段（self-polling）")
+@router.get(
+    "/crawl_queue/partial",
+    response_class=HTMLResponse,
+    summary="爬取队列 htmx 片段（self-polling）",
+)
 async def get_crawl_queue_partial(
     request: Request,
     db: Session = Depends(get_db),
@@ -1106,18 +1246,18 @@ async def update_user_level(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return {"error": "未登录"}
-    
+
     try:
         data = await request.json()
         level = data.get("level")
-        
+
         if level is None:
             return {"error": "缺少等级参数"}
-        
+
         level = int(level)
         if level < 1 or level > 5:
             return {"error": "等级必须在1-5之间"}
-        
+
         user.level = level
         db.commit()
         return {"message": "等级更新成功"}

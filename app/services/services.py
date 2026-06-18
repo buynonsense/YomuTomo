@@ -1,19 +1,21 @@
-import json
-import pykakasi
-import openai
-import httpx
-from passlib.hash import pbkdf2_sha256
-from typing import List, Dict, Tuple
-from app.core.config import settings
-from app.utils.placeholder_texts import PLACEHOLDER_MEANINGS
-import concurrent.futures
-import threading
 import asyncio
+import concurrent.futures
 import inspect
-import traceback
+import json
 import logging
+import threading
+import traceback
+from typing import Dict, List, Tuple
+
+import httpx
+import openai
+import pykakasi
+from passlib.hash import pbkdf2_sha256
+
+from app.core.config import settings
 from app.services.ai_client_async import AIClient, AIClientError
 from app.services.furigana_filter import apply_furigana_filter
+from app.utils.placeholder_texts import PLACEHOLDER_MEANINGS
 from app.utils.time import beijing_now
 
 try:
@@ -25,7 +27,7 @@ except ImportError:
 # 日志函数，包含北京时间
 def log_with_time(message: str, level: str = "INFO"):
     """带北京时间的日志输出"""
-    timestamp = beijing_now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = beijing_now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] [{level}] {message}")
 
 
@@ -36,31 +38,49 @@ kks = pykakasi.kakasi()
 def get_openai_client(api_key: str | None, base_url: str | None):
     # 简单调试日志（生产可改为使用logging）
     try:
-        masked = (api_key[:6] + '***' + api_key[-4:]) if api_key and len(api_key) > 10 else ('None' if not api_key else '***')
-        log_with_time(f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}")
+        masked = (
+            (api_key[:6] + "***" + api_key[-4:])
+            if api_key and len(api_key) > 10
+            else ("None" if not api_key else "***")
+        )
+        log_with_time(
+            f"[AI] Init client. Header API Key: {masked}; header base_url={base_url or 'None'}"
+        )
     except Exception:
         pass
     if api_key:
         # Return a synchronous compatibility client that routes through AIClient.factory
-        provider = {"api_url": base_url or '', "api_key": api_key, "model": None, "extra": {}}
+        provider = {
+            "api_url": base_url or "",
+            "api_key": api_key,
+            "model": None,
+            "extra": {},
+        }
         return SyncCompatClient(provider)
     else:
         # Log caller stack to help trace which code path invoked this without an API key
         try:
             caller = inspect.stack()[1]
-            logging.error("get_openai_client called without api_key. caller: %s:%s in %s", caller.filename, caller.lineno, caller.function)
-            logging.error("Call stack:\n%s", ''.join(traceback.format_stack()))
+            logging.error(
+                "get_openai_client called without api_key. caller: %s:%s in %s",
+                caller.filename,
+                caller.lineno,
+                caller.function,
+            )
+            logging.error("Call stack:\n%s", "".join(traceback.format_stack()))
         except Exception:
             pass
-        raise ValueError("必须提供API key才能使用AI功能 (get_openai_client called without api_key)")
+        raise ValueError(
+            "必须提供API key才能使用AI功能 (get_openai_client called without api_key)"
+        )
 
 
 def _kakasi_ruby(text: str) -> str:
     result = kks.convert(text)
-    ruby_html = ''
+    ruby_html = ""
     for item in result:
-        orig = item['orig']
-        hira = item['hira']
+        orig = item["orig"]
+        hira = item["hira"]
         if orig == hira:
             ruby_html += orig
         else:
@@ -68,7 +88,9 @@ def _kakasi_ruby(text: str) -> str:
     return ruby_html
 
 
-def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: openai.OpenAI) -> str:
+def _ai_fix_ruby(
+    original_text: str, kakasi_ruby_html: str, model: str, client: openai.OpenAI
+) -> str:
     prompt = (
         "你是日语教师。请对下面的带有ruby标注的HTML进行校对，确保每个汉字词的假名准确。"
         "只返回修正后的HTML，不要解释。\n\n"
@@ -76,7 +98,9 @@ def _ai_fix_ruby(original_text: str, kakasi_ruby_html: str, model: str, client: 
         f"当前ruby HTML：\n{kakasi_ruby_html}"
     )
     try:
-        log_with_time(f"[AI] CALL _ai_fix_ruby model={model} len(text)={len(original_text)}")
+        log_with_time(
+            f"[AI] CALL _ai_fix_ruby model={model} len(text)={len(original_text)}"
+        )
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -95,7 +119,9 @@ def _ai_ruby(original_text: str, model: str, client: openai.OpenAI) -> str:
         f"文本：\n{original_text}"
     )
     try:
-        log_with_time(f"[AI] CALL _ai_ruby model={model} len(text)={len(original_text)}")
+        log_with_time(
+            f"[AI] CALL _ai_ruby model={model} len(text)={len(original_text)}"
+        )
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -111,14 +137,20 @@ def generate_ruby(text: str, model: str, client: openai.OpenAI) -> str:
     mode = settings.FURIGANA_MODE.lower()
     if mode == "kakasi":
         ruby_html = _kakasi_ruby(text)
-        return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
+        return apply_furigana_filter(
+            ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1)
+        )
     if mode == "ai":
         ruby_html = _ai_ruby(text, model, client)
-        return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
+        return apply_furigana_filter(
+            ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1)
+        )
     # hybrid
     base_html = _kakasi_ruby(text)
     ruby_html = _ai_fix_ruby(text, base_html, model, client)
-    return apply_furigana_filter(ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1))
+    return apply_furigana_filter(
+        ruby_html, getattr(settings, "FURIGANA_LEVEL_FILTER", 1)
+    )
 
 
 def extract_vocabulary(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
@@ -181,10 +213,11 @@ reading 示例:
 
 文本: {text}"""
     try:
-        log_with_time(f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}")
+        log_with_time(
+            f"[AI] CALL extract_vocabulary model={model} len(text)={len(text)}"
+        )
         response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}]
+            model=model, messages=[{"role": "user", "content": prompt}]
         )
         content = (response.choices[0].message.content or "").strip()
 
@@ -201,24 +234,24 @@ reading 示例:
             fence_end = content.find("```", open_idx + len(fence))
             if fence_end == -1:
                 continue
-            inner = content[open_idx + len(fence):fence_end].strip()
+            inner = content[open_idx + len(fence) : fence_end].strip()
             vocab = _parse_vocab_json(inner)
             if vocab:
                 return vocab[:8]
 
         # 3) AI 在 JSON 前后加了前言/后语, 剥 [ ... ] 子串;
         #    或者 AI 只给了一个对象 { ... } (没包成数组), 也兼容。
-        first = content.find('[')
-        last = content.rfind(']')
+        first = content.find("[")
+        last = content.rfind("]")
         if first != -1 and last > first:
-            vocab = _parse_vocab_json(content[first:last + 1])
+            vocab = _parse_vocab_json(content[first : last + 1])
             if vocab:
                 return vocab[:8]
         # 3b) 没有 [ ... ] 但有 { ... }, 包成数组再试一次
-        obj_first = content.find('{')
-        obj_last = content.rfind('}')
+        obj_first = content.find("{")
+        obj_last = content.rfind("}")
         if obj_first != -1 and obj_last > obj_first:
-            vocab = _parse_vocab_json("[" + content[obj_first:obj_last + 1] + "]")
+            vocab = _parse_vocab_json("[" + content[obj_first : obj_last + 1] + "]")
             if vocab:
                 return vocab[:8]
 
@@ -226,7 +259,9 @@ reading 示例:
         #    此时我们没有 AI 生成的 meaning, 留 None, 让模板显示 "—"
         fallback = _extract_japanese_words_fallback(content)
         if fallback:
-            log_with_time(f"[AI] extract_vocabulary JSON 全失败, 走正则兜底, 拿到 {len(fallback)} 个词")
+            log_with_time(
+                f"[AI] extract_vocabulary JSON 全失败, 走正则兜底, 拿到 {len(fallback)} 个词"
+            )
             return fallback[:8]
 
         log_with_time(f"[AI] extract_vocabulary 解析失败, content={content[:200]!r}")
@@ -255,12 +290,16 @@ def _is_transient_ai_error(err: Exception) -> bool:
             return True
         return False
     # 2) 直连 httpx 瞬时异常 (理论上游 AIClient 都会包装, 这里是兜底)
-    if isinstance(err, (httpx.TimeoutException, httpx.ConnectError, ConnectionError, TimeoutError)):
+    if isinstance(
+        err, (httpx.TimeoutException, httpx.ConnectError, ConnectionError, TimeoutError)
+    ):
         return True
     return False
 
 
-def _extract_vocabulary_with_retry(text: str, model: str, client: openai.OpenAI) -> List[Dict]:
+def _extract_vocabulary_with_retry(
+    text: str, model: str, client: openai.OpenAI
+) -> List[Dict]:
     """对 extract_vocabulary 包一层应用层重试。
 
     底层 AIClient 已有 AI_REQUEST_RETRIES 次内部重试, 这里再重试一次纯粹是兜底,
@@ -288,9 +327,10 @@ def _extract_japanese_words_fallback(content: str) -> List[Dict]:
       丢弃或保存)。当前 extract_vocabulary 直接返回, 由保存路径决定。
     """
     import re
+
     # 抠两种: 带引号的 "日语词" / 散文中明显的 2-8 个汉字/假名词
     quoted = re.findall(r'["\'「『]([^"\'」』\n]{2,10})["\'」』]', content)
-    bare = re.findall(r'[々〆〇ーゝゞ]|[一-龯]{2,}|[ぁ-ゖ]{2,}|[ァ-ヺ]{2,}', content)
+    bare = re.findall(r"[々〆〇ーゝゞ]|[一-龯]{2,}|[ぁ-ゖ]{2,}|[ァ-ヺ]{2,}", content)
     candidates = quoted + bare
     # 中文虚词 / 助词 (日语不会用这些字), 一旦词里出现就大概率是中文短语
     _chinese_particles = set("的是在了和与为于从到对把被给让使请要能会可以可能")
@@ -305,7 +345,7 @@ def _extract_japanese_words_fallback(content: str) -> List[Dict]:
         if any(ch.isdigit() for ch in word):
             continue
         # 排除 schema 字段名 / 常见噪声
-        if word in ('word', 'meaning', 'pronunciation', 'taifuu'):
+        if word in ("word", "meaning", "pronunciation", "taifuu"):
             continue
         # 含中文虚词的整段话不要 (是 Japanese 的话用 の / は / を, 不会用 的 / 是)
         if any(ch in _chinese_particles for ch in word):
@@ -319,13 +359,15 @@ def _extract_japanese_words_fallback(content: str) -> List[Dict]:
             ).strip()
         except Exception:
             reading = ""
-        out.append({
-            "word": word,
-            "reading": reading,
-            "romaji": _reading_to_romaji(reading),
-            "pronunciation": reading,
-            "meaning": None,
-        })
+        out.append(
+            {
+                "word": word,
+                "reading": reading,
+                "romaji": _reading_to_romaji(reading),
+                "pronunciation": reading,
+                "meaning": None,
+            }
+        )
     return out
 
 
@@ -370,7 +412,7 @@ def _parse_vocab_json(raw: str) -> List[Dict]:
             continue
         if any(ch.isdigit() for ch in word):
             continue
-        if word in ('word', 'meaning', 'pronunciation', 'reading'):
+        if word in ("word", "meaning", "pronunciation", "reading"):
             continue
         if word in seen:
             continue
@@ -388,14 +430,16 @@ def _parse_vocab_json(raw: str) -> List[Dict]:
             except Exception:
                 reading = ""
         romaji = _reading_to_romaji(reading) if reading else ""
-        out.append({
-            "word": word,
-            "reading": reading,
-            "romaji": romaji,
-            # 兼容旧字段名 (vocabulary.py seed 仍读 pronunciation)
-            "pronunciation": reading,
-            "meaning": meaning,
-        })
+        out.append(
+            {
+                "word": word,
+                "reading": reading,
+                "romaji": romaji,
+                # 兼容旧字段名 (vocabulary.py seed 仍读 pronunciation)
+                "pronunciation": reading,
+                "meaning": meaning,
+            }
+        )
     return out
 
 
@@ -411,10 +455,11 @@ def translate_to_chinese(text: str, model: str, client: openai.OpenAI) -> str:
 
 请直接返回中文翻译，不要添加其他说明。"""
     try:
-        log_with_time(f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}")
+        log_with_time(
+            f"[AI] CALL translate_to_chinese model={model} len(text)={len(text)}"
+        )
         response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}]
+            model=model, messages=[{"role": "user", "content": prompt}]
         )
         translation = response.choices[0].message.content.strip()
         return translation
@@ -436,18 +481,17 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
     try:
         log_with_time(f"[AI] CALL generate_title model={model} len(text)={len(text)}")
         response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}]
+            model=model, messages=[{"role": "user", "content": prompt}]
         )
         title = response.choices[0].message.content.strip()
         title = title.strip('"“”『』「」')
         import re
-        if re.search(r'[ぁ-ゖ]', title) or re.search(r'[A-Za-z]', title):
+
+        if re.search(r"[ぁ-ゖ]", title) or re.search(r"[A-Za-z]", title):
             try:
                 fix_prompt = f"请将下面这段标题改写成符合要求的纯简体中文（6~15个汉字，无标点，无外文）：{title}\n只输出改写后的标题。"
                 fix_resp = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": fix_prompt}]
+                    model=model, messages=[{"role": "user", "content": fix_prompt}]
                 )
                 fixed = fix_resp.choices[0].message.content.strip().strip('"“”『』「」')
                 if fixed:
@@ -456,7 +500,7 @@ def generate_title(text: str, model: str, client: openai.OpenAI) -> str:
                 pass
         if len(title) > 15:
             title = title[:15]
-        if not re.search(r'[一-龯]', title):
+        if not re.search(r"[一-龯]", title):
             title = "朗读练习"
         return title or "朗读练习"
     except Exception as e:
@@ -499,11 +543,14 @@ def verify_legacy_bcrypt_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[str, List[Dict], str, str, str]:
+def generate_all_content(
+    text: str, model: str, client: openai.OpenAI
+) -> Tuple[str, List[Dict], str, str, str]:
     """
     并发生成所有AI内容：注音、词汇、翻译、标题、emoji
     返回：(ruby_text, vocab, translation, title, emoji)
     """
+
     def generate_ruby_task():
         return generate_ruby(text, model, client)
 
@@ -568,9 +615,7 @@ def generate_all_content(text: str, model: str, client: openai.OpenAI) -> Tuple[
                         f"AI 接口返回错误 (HTTP {status})，请检查配置或稍后再试"
                     ) from e
                 # transient=False 但也没 status_code: 通常是 4xx 解析失败之类
-                raise Exception(
-                    f"AI 接口调用失败：{str(e)}，请检查 API 配置"
-                ) from e
+                raise Exception(f"AI 接口调用失败：{str(e)}，请检查 API 配置") from e
             # 非 AIClientError, 保持原行为但去掉了 "AI生成失败:" 前缀的重复
             raise Exception(f"AI 生成失败: {str(e)}")
 
@@ -602,7 +647,7 @@ class SyncCompatCompletions:
 
     def create(self, model: str, messages: list, max_tokens: int = None):
         # Ensure provider model is set
-        self.provider['model'] = model
+        self.provider["model"] = model
         client = AIClient.factory(self.provider)
         try:
             # Run async client in this sync context (safe inside ThreadPoolExecutor worker threads)
@@ -610,6 +655,7 @@ class SyncCompatCompletions:
         except Exception as e:
             # Normalize to raise as-is so callers see the error
             raise e
+
         # Build a small object compatible with existing usage: resp.choices[0].message.content
         class _Message:
             def __init__(self, content):
@@ -624,9 +670,9 @@ class SyncCompatCompletions:
                 self.choices = [_Choice(text)]
                 self.raw = raw
 
-        return _Resp(resp.get('text', ''), resp.get('raw'))
+        return _Resp(resp.get("text", ""), resp.get("raw"))
 
 
 class SyncCompatClient:
     def __init__(self, provider: dict):
-        self.chat = type('C', (), {'completions': SyncCompatCompletions(provider)})()
+        self.chat = type("C", (), {"completions": SyncCompatCompletions(provider)})()

@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.routers.context import get_current_user
-from app.services.notifications import delete_notifications, get_unread_count, list_notifications, mark_notifications_read
+from app.services.notifications import (delete_notifications, get_unread_count,
+                                        list_notifications,
+                                        mark_notifications_read)
 
 router = APIRouter(prefix="", tags=["通知"])
 
@@ -28,7 +30,9 @@ async def get_notifications(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/notifications/unread-count", summary="获取未读通知数")
-async def get_notifications_unread_count(request: Request, db: Session = Depends(get_db)):
+async def get_notifications_unread_count(
+    request: Request, db: Session = Depends(get_db)
+):
     user = require_login(request, db)
     if not user:
         return {"success": False, "message": "未登录", "unread_count": 0}
@@ -37,7 +41,9 @@ async def get_notifications_unread_count(request: Request, db: Session = Depends
 
 
 @router.post("/notifications/mark-read", summary="标记通知已读")
-async def mark_notifications_read_endpoint(request: Request, db: Session = Depends(get_db)):
+async def mark_notifications_read_endpoint(
+    request: Request, db: Session = Depends(get_db)
+):
     user = require_login(request, db)
     if not user:
         return {"success": False, "message": "未登录", "affected": 0}
@@ -63,7 +69,9 @@ async def mark_notifications_read_endpoint(request: Request, db: Session = Depen
 
 
 @router.post("/notifications/delete", summary="删除通知")
-async def delete_notifications_endpoint(request: Request, db: Session = Depends(get_db)):
+async def delete_notifications_endpoint(
+    request: Request, db: Session = Depends(get_db)
+):
     user = require_login(request, db)
     if not user:
         return {"success": False, "message": "未登录", "affected": 0}

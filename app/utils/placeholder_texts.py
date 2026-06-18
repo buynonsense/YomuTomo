@@ -15,28 +15,33 @@ user_vocabulary.meaning / pronunciation 字段。
 
 抽到这一个文件, 三个调用方都从这里 import, 避免加新占位符时漏改。
 """
+
 from __future__ import annotations
 
 from typing import FrozenSet
 
 # 释义 / meaning 的占位串集合
-PLACEHOLDER_MEANINGS: FrozenSet[str] = frozenset({
-    "",
-    "释义待补充",
-    "待补充",
-    "暂无",
-    "暂无释义",
-    "?",
-    "？",
-    "无",
-    "TBD",
-    "tbd",
-    "todo",
-})
+PLACEHOLDER_MEANINGS: FrozenSet[str] = frozenset(
+    {
+        "",
+        "释义待补充",
+        "待补充",
+        "暂无",
+        "暂无释义",
+        "?",
+        "？",
+        "无",
+        "TBD",
+        "tbd",
+        "todo",
+    }
+)
 
 # 读音 / pronunciation 的占位串集合 (空串也算, 因为旧代码可能落空)
-PLACEHOLDER_PRONUNCIATIONS: FrozenSet[str] = frozenset({
-    "",
-    "读音待补充",
-    "待补充",
-})
+PLACEHOLDER_PRONUNCIATIONS: FrozenSet[str] = frozenset(
+    {
+        "",
+        "读音待补充",
+        "待补充",
+    }
+)

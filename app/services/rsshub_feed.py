@@ -81,7 +81,9 @@ def _normalize_rsshub_base_url(base_url: str | None = None) -> str | None:
     return normalized.rstrip("/")
 
 
-def _normalize_rsshub_route(value: str, base_url: str | None = None, feed_format: str | None = "json") -> str | None:
+def _normalize_rsshub_route(
+    value: str, base_url: str | None = None, feed_format: str | None = "json"
+) -> str | None:
     route = value.removeprefix("rsshub://").lstrip("/")
     if not route:
         return None
@@ -93,7 +95,9 @@ def _normalize_rsshub_route(value: str, base_url: str | None = None, feed_format
     return _set_rsshub_format(f"{base}/{route}", feed_format)
 
 
-def _normalize_rsshub_url(value: str, base_url: str | None = None, feed_format: str | None = "json") -> str | None:
+def _normalize_rsshub_url(
+    value: str, base_url: str | None = None, feed_format: str | None = "json"
+) -> str | None:
     normalized = normalize_http_url(value)
     if not normalized:
         return None
@@ -116,7 +120,9 @@ def _normalize_rsshub_url(value: str, base_url: str | None = None, feed_format: 
     return _set_rsshub_format(normalized, feed_format)
 
 
-def _describe_rsshub_request_error(exc: Exception, normalized_source: str, attempts: int = 1) -> str:
+def _describe_rsshub_request_error(
+    exc: Exception, normalized_source: str, attempts: int = 1
+) -> str:
     if isinstance(exc, requests.Timeout):
         return f"RSSHub 请求超时，请稍后重试：{normalized_source}"
     if isinstance(exc, requests.exceptions.ChunkedEncodingError):
@@ -136,7 +142,11 @@ def _describe_rsshub_status_error(
 ) -> str:
     if status_code == 403:
         preview = (body_snippet or "").strip().replace("\n", " ")[:500]
-        body_hint = f"上游响应摘要：{preview}" if preview else "上游未返回可读响应体（可能是 Cloudflare 拦截页）"
+        body_hint = (
+            f"上游响应摘要：{preview}"
+            if preview
+            else "上游未返回可读响应体（可能是 Cloudflare 拦截页）"
+        )
         return (
             "RSSHub 公共实例已对本机 IP 返回 403。"
             f"请更换 RSSHUB_BASE_URL（如 {settings.RSSHUB_BASE_URL}）或自部署 RSSHub。"
@@ -173,7 +183,9 @@ def normalize_rsshub_source_url(
         return _normalize_rsshub_url(value, base_url, feed_format=feed_format)
 
     if "/" in value and " " not in value:
-        return _normalize_rsshub_route(f"rsshub://{value.lstrip('/')}", base_url, feed_format=feed_format)
+        return _normalize_rsshub_route(
+            f"rsshub://{value.lstrip('/')}", base_url, feed_format=feed_format
+        )
 
     return None
 
@@ -293,7 +305,12 @@ def _normalize_feed_item(raw_item: dict, source_feed_url: str) -> dict | None:
     if not title:
         return None
 
-    link = raw_item.get("url") or raw_item.get("link") or raw_item.get("external_url") or raw_item.get("id")
+    link = (
+        raw_item.get("url")
+        or raw_item.get("link")
+        or raw_item.get("external_url")
+        or raw_item.get("id")
+    )
     if not isinstance(link, str):
         return None
 
@@ -302,11 +319,17 @@ def _normalize_feed_item(raw_item: dict, source_feed_url: str) -> dict | None:
         return None
 
     summary_text = _strip_html(raw_item.get("summary") or raw_item.get("description"))
-    content_text = _strip_html(raw_item.get("content_text") or raw_item.get("content_html"))
+    content_text = _strip_html(
+        raw_item.get("content_text") or raw_item.get("content_html")
+    )
     content = content_text or summary_text or title
     outline = summary_text or content[:200]
 
-    published_at = raw_item.get("date_published") or raw_item.get("published_at") or raw_item.get("updated")
+    published_at = (
+        raw_item.get("date_published")
+        or raw_item.get("published_at")
+        or raw_item.get("updated")
+    )
     if not isinstance(published_at, str):
         published_at = None
 
@@ -347,7 +370,9 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
         last_exc: Exception | None = None
         for attempt in range(1, RSSHUB_FEED_RETRY_ATTEMPTS + 1):
             try:
-                return requests.get(url, headers=headers, timeout=RSSHUB_FEED_TIMEOUT_SECONDS)
+                return requests.get(
+                    url, headers=headers, timeout=RSSHUB_FEED_TIMEOUT_SECONDS
+                )
             except _RETRYABLE_REQUEST_EXC as exc:
                 # 瞬时错误：IncompleteRead / Connection broken / Timeout
                 # RSSHub 公共实例经常中途断流，重试 1-2 次通常能拿到完整 body
@@ -371,7 +396,9 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
         # 全部重试用完仍失败
         assert last_exc is not None
         raise RSSHubFetchError(
-            _describe_rsshub_request_error(last_exc, url, attempts=RSSHUB_FEED_RETRY_ATTEMPTS),
+            _describe_rsshub_request_error(
+                last_exc, url, attempts=RSSHUB_FEED_RETRY_ATTEMPTS
+            ),
             source_url=source_url,
             normalized_source_url=url,
         ) from last_exc
@@ -387,14 +414,17 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
                     _describe_rsshub_status_error(
                         fallback_status,
                         rss_source,
-                        body_snippet=getattr(fallback_response, "text", "")[:500] or None,
+                        body_snippet=getattr(fallback_response, "text", "")[:500]
+                        or None,
                     ),
                     source_url=source_url,
                     normalized_source_url=rss_source,
                     status_code=fallback_status,
                 )
 
-            items = _extract_items_from_xml_payload(getattr(fallback_response, "text", ""))
+            items = _extract_items_from_xml_payload(
+                getattr(fallback_response, "text", "")
+            )
             normalized_items: list[dict] = []
             max_items = max(limit, 0)
 
@@ -430,14 +460,17 @@ def fetch_rsshub_feed_items(source_url: str | None, limit: int = 12) -> list[dic
                     _describe_rsshub_status_error(
                         fallback_status,
                         rss_source,
-                        body_snippet=getattr(fallback_response, "text", "")[:500] or None,
+                        body_snippet=getattr(fallback_response, "text", "")[:500]
+                        or None,
                     ),
                     source_url=source_url,
                     normalized_source_url=rss_source,
                     status_code=fallback_status,
                 )
 
-            items = _extract_items_from_xml_payload(getattr(fallback_response, "text", ""))
+            items = _extract_items_from_xml_payload(
+                getattr(fallback_response, "text", "")
+            )
             normalized_items: list[dict] = []
             max_items = max(limit, 0)
 

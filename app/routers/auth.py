@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Request, Form, Depends
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+
 from app.db import get_db
-from app.routers.context import get_current_user
 from app.model.models import User
-from app.services.services import hash_password, is_legacy_bcrypt_hash, verify_password
+from app.routers.context import get_current_user
+from app.services.services import (hash_password, is_legacy_bcrypt_hash,
+                                   verify_password)
 from app.utils.templates import create_templates
 
 templates = create_templates("templates")
@@ -29,15 +31,27 @@ async def register(
 ):
     # Validate password confirmation
     if password != confirm_password:
-        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "两次输入的密码不一致"})
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"user": get_current_user(request, db), "error": "两次输入的密码不一致"},
+        )
 
     # Validate password length
     if len(password) < 6:
-        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "密码长度至少需要6个字符"})
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"user": get_current_user(request, db), "error": "密码长度至少需要6个字符"},
+        )
 
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        return templates.TemplateResponse(request, "register.html", {"user": get_current_user(request, db), "error": "邮箱已被注册"})
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"user": get_current_user(request, db), "error": "邮箱已被注册"},
+        )
     password_hash = hash_password(password)
     user = User(email=email, password_hash=password_hash)
     db.add(user)
@@ -64,7 +78,11 @@ async def login(
 ):
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.password_hash):
-        return templates.TemplateResponse(request, "login.html", {"user": get_current_user(request, db), "error": "邮箱或密码错误"})
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"user": get_current_user(request, db), "error": "邮箱或密码错误"},
+        )
 
     if is_legacy_bcrypt_hash(user.password_hash):
         user.password_hash = hash_password(password)
