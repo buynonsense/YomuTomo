@@ -140,31 +140,31 @@
             <div id="vocab-grid" class="vocab-grid">
               {% for item in vocab %}
               <div class="vocab-item{% if item.mastered %} is-mastered{% endif %}" data-vocab-word="{{ item.word }}" data-vocab-mastered="{{ 1 if item.mastered else 0 }}">
-                <div class="vocab-word">{{ item.word }}</div>
+                <div class="vocab-word-row">
+                  <div class="vocab-word">{{ item.word }}</div>
+                  <button type="button" class="vocab-speak-btn" data-vocab-action="speak" aria-label="朗读生词" title="朗读">📢</button>
+                </div>
                 {% set _cleaned_meaning = item.meaning | clean_meaning %}
                 {% if _cleaned_meaning %}
                 <div class="vocab-meaning">释义：{{ _cleaned_meaning }}</div>
                 {% else %}
                 <div class="vocab-meaning vocab-meaning--missing">释义：<span class="vocab-meaning__dash">—</span></div>
                 {% endif %}
-                <div class="vocab-actions">
-                  <button type="button" class="btn-icon" data-vocab-action="speak" aria-label="朗读生词">🔊</button>
-                  {# htmx 表单：提交后整段 form 被 outerHTML 替换；HX-Trigger 同步父级 .vocab-item.classList #}
-                  <form class="vocab-toggle-form"
-                        hx-post="/vocabulary/toggle"
-                        hx-swap="outerHTML"
-                        hx-target="this"
-                        data-vocab-word="{{ item.word }}">
-                    <input type="hidden" name="word" value="{{ item.word }}" />
-                    <input type="hidden" name="meaning" value="{{ item.meaning or '' }}" />
-                    <input type="hidden" name="article_id" value="{{ article_id or '' }}" />
-                    <input type="hidden" name="current_mastered" value="{{ 1 if item.mastered else 0 }}" />
-                    <button type="submit"
-                            class="vocab-master-btn{% if item.mastered %} is-mastered{% endif %}"
-                            data-vocab-action="toggle-mastered"
-                            aria-label="{{ '取消已掌握' if item.mastered else '标记为已掌握' }}">{{ '已掌握' if item.mastered else '标记掌握' }}</button>
-                  </form>
-                </div>
+                {# htmx 表单：提交后整段 form 被 outerHTML 替换；HX-Trigger 同步父级 .vocab-item.classList #}
+                <form class="vocab-toggle-form vocab-toggle-form--footer"
+                      hx-post="/vocabulary/toggle"
+                      hx-swap="outerHTML"
+                      hx-target="this"
+                      data-vocab-word="{{ item.word }}">
+                  <input type="hidden" name="word" value="{{ item.word }}" />
+                  <input type="hidden" name="meaning" value="{{ item.meaning or '' }}" />
+                  <input type="hidden" name="article_id" value="{{ article_id or '' }}" />
+                  <input type="hidden" name="current_mastered" value="{{ 1 if item.mastered else 0 }}" />
+                  <button type="submit"
+                          class="vocab-master-btn{% if item.mastered %} is-mastered{% endif %}"
+                          data-vocab-action="toggle-mastered"
+                          aria-label="{{ '取消已掌握' if item.mastered else '标记为已掌握' }}">{{ '已掌握' if item.mastered else '标记掌握' }}</button>
+                </form>
               </div>
               {% endfor %}
             </div>

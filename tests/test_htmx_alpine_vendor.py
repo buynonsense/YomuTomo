@@ -647,19 +647,30 @@ def test_vocab_toggle_partial_form_uses_htmx_and_carries_state():
 
 def test_reading_vocab_uses_htmx_form_for_toggle():
     reading = (REPO_ROOT / "templates" / "reading.html").read_text(encoding="utf-8")
-    assert 'class="vocab-toggle-form"' in reading
+    # vocab-toggle-form 是基底类, 卡片 footer 布局会在后面追加 --footer 修饰
+    assert '"vocab-toggle-form' in reading
     assert 'hx-post="/vocabulary/toggle"' in reading
     # 必须使用 hx-swap="outerHTML" + hx-target="this"，否则按钮无法原位替换
     assert 'hx-swap="outerHTML"' in reading
     assert 'hx-target="this"' in reading
+    # 新布局: 喇叭按钮用 📢 替代旧 🔊, 单词行用 .vocab-word-row 包裹
+    assert 'class="vocab-word-row"' in reading
+    assert 'class="vocab-speak-btn"' in reading
+    assert 'data-vocab-action="speak"' in reading
+    # 旧布局残留: btn-icon 不应再出现在生词卡片
+    assert 'class="btn-icon" data-vocab-action="speak"' not in reading
 
 
 def test_vocabulary_page_uses_htmx_form_for_toggle():
     vocab = (REPO_ROOT / "templates" / "vocabulary.html").read_text(encoding="utf-8")
-    assert 'class="vocab-toggle-form"' in vocab
+    assert '"vocab-toggle-form' in vocab
     assert 'hx-post="/vocabulary/toggle"' in vocab
     assert 'hx-swap="outerHTML"' in vocab
     assert 'hx-target="this"' in vocab
+    assert 'class="vocab-word-row"' in vocab
+    assert 'class="vocab-speak-btn"' in vocab
+    assert 'data-vocab-action="speak"' in vocab
+    assert 'class="btn-icon" data-vocab-action="speak"' not in vocab
 
 
 def test_reading_js_drops_manual_toggle_chain():
