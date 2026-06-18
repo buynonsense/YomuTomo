@@ -168,6 +168,17 @@ def list_vocabulary_entries(
     return query.order_by(VocabularyEntry.updated_at.desc()).all()
 
 
+def _word_to_reading(word: str) -> str:
+    """用 pykakasi 从日语词机械算出假名读音。失败返回 ''。"""
+    if not word:
+        return ""
+    try:
+        parts = _kks.convert(word)
+    except Exception:
+        return ""
+    return "".join((p.get("hira") or p.get("kana") or "") for p in parts).strip()
+
+
 def build_vocabulary_view_rows(
     db: Session,
     user_id: int,
@@ -186,9 +197,11 @@ def build_vocabulary_view_rows(
 
     view_rows: list[dict] = []
     for entry in entries:
-        # pronunciation 字段现在存的是假名 reading (AI 给的优先, 旧条目为空)
-        # romaji 由 pykakasi 机械从 reading 算出
+        # pronunciation 字段存的是假名 reading (AI 给的优先)
+        # 旧条目可能为空, 此时用 pykakasi 从 word 兜底算出 reading
         reading = entry.pronunciation or ""
+        if not reading:
+            reading = _word_to_reading(entry.word or "")
         romaji = _reading_to_romaji(reading) if reading else ""
         view_rows.append(
             {
@@ -202,7 +215,6 @@ def build_vocabulary_view_rows(
                 "status": entry.status,
                 "article_id": entry.article_id,
                 "article_title": article_map.get(entry.article_id, ""),
-                "updated_at": datetime_to_isoformat(entry.updated_at),
                 "mastered_at": datetime_to_isoformat(entry.mastered_at),
             }
         )

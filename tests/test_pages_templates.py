@@ -118,9 +118,7 @@ def test_vocabulary_page_marks_timestamps_for_client_side_formatting():
     from pathlib import Path
 
     vocabulary_html = Path("templates/vocabulary.html").read_text(encoding="utf-8")
-    assert "data-vocab-updated-at" in vocabulary_html
     assert "data-vocab-mastered-at" in vocabulary_html
-    assert "更新：</div>" in vocabulary_html
     assert "掌握时间：</div>" in vocabulary_html
 
 

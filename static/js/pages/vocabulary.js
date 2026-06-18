@@ -106,15 +106,10 @@
       },
 
       _formatTimeSpans() {
-        document.querySelectorAll('[data-vocab-updated-at], [data-vocab-mastered-at]').forEach((element) => {
-          const updatedAt = element.getAttribute('data-vocab-updated-at');
+        document.querySelectorAll('[data-vocab-mastered-at]').forEach((element) => {
           const masteredAt = element.getAttribute('data-vocab-mastered-at');
-          const updatedText = formatTime(updatedAt);
           const masteredText = formatTime(masteredAt);
-          if (updatedText && element.hasAttribute('data-vocab-updated-at')) {
-            element.textContent = '更新：' + updatedText;
-          }
-          if (masteredText && element.hasAttribute('data-vocab-mastered-at')) {
+          if (masteredText) {
             element.textContent = '掌握时间：' + masteredText;
           }
         });

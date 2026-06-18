@@ -617,7 +617,7 @@ def test_vocabulary_page_renders_with_real_view_rows(app_client: TestClient, use
 
     assert response.status_code == 200
     assert "词条统计" in response.text
-    assert 'data-vocab-updated-at="2026-06-08T10:00:00+00:00"' in response.text
+    assert 'data-vocab-mastered-at="2026-06-08T11:00:00+00:00"' in response.text
 
 
 def test_toggle_vocabulary_creates_entry(app_client: TestClient, user_factory):
